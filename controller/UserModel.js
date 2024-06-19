@@ -19,12 +19,35 @@ class UserModel {
       }
       const hashedPassword = await bcrypt.hash(userData.contrasena_usuario, 10);
       const result = await client.query(
-        'INSERT INTO usuarios (nombre_usuario, correo_usuario, contrasena_usuario) VALUES ($1, $2, $3) RETURNING *;',
-        [userData.nombre_usuario, userData.correo_usuario, hashedPassword]
+        'INSERT INTO usuarios (nombre_usuario, correo_usuario, contrasena_usuario, verification_token, token_expires) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
+        [userData.nombre_usuario, userData.correo_usuario, hashedPassword, userData.verification_token, userData.token_expires]
       );
       return result.rows[0];
     } catch (error){
       throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async createPendingUser({ nombre_usuario, correo_usuario, contrasena_usuario, verificationToken, tokenExpires }) {
+    const client = await pool.connect();
+    try {
+      // Inserta el usuario en la base de datos con el token de verificación y la fecha de expiración
+      await client.query('INSERT INTO usuarios (nombre_usuario, correo_usuario, contrasena_usuario, verification_token, token_expires, is_verified) VALUES ($1, $2, $3, $4, $5, false)', 
+      [nombre_usuario, correo_usuario, contrasena_usuario, verificationToken, tokenExpires]);
+    } catch (error) {
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async activateUser(correo_usuario) {
+    const client = await pool.connect();
+    try {
+      const result = await client.query('UPDATE usuarios SET is_verified = true WHERE correo_usuario = $1 AND is_verified = false RETURNING *', [correo_usuario]);
+      return result.rows[0];
     } finally {
       client.release();
     }
@@ -63,10 +86,10 @@ class UserModel {
     }
   }
 
-  async deleteUser(id_usuario) {
+  async deleteUser(correo_usuario) {
     const client = await pool.connect();
     try {
-      const result = await client.query('DELETE FROM usuarios WHERE id_usuario = $1;', [id_usuario]);
+      const result = await client.query('DELETE FROM usuarios WHERE correo_usuario = $1;', [correo_usuario]);
       return result.rowCount; // rowCount será 1 si se eliminó el usuario, 0 si no se encontró
     } finally {
       client.release();
