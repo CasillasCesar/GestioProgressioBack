@@ -3,7 +3,10 @@ const express = require('express')
 const {Pool,Client} = require('pg')
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-router.use(express.json())
+router.use(express.json());
+const bodyParser = require('body-parser');
+const nodemailer = require('nodemailer');
+
 const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
@@ -187,7 +190,7 @@ router.get(
         try {
             console.log('entro');
             const consulta = await pool.query('SELECT 1');
-            sendCorreo('cesarcasillascespedes@gmail.com','Cesar','Prueba','2024-01-01','2024-02-02','Descripcion');
+            sendCorreo('mazin3037.fa@gmail.com','GP','Prueba','2024-01-01','2024-02-02','Descripcion');
             return res.status(400).json({'message':consulta})
         } catch (error) {
             return res.status(202).json({message:error})
