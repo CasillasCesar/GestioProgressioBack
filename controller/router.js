@@ -5,6 +5,7 @@ const router = express.Router();
 const nodemailer = require('nodemailer');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 router.use(express.json());
 
 const UserModel = require('./UserModel');
@@ -20,6 +21,8 @@ const pool = new Pool({
 });
 
 router.use(bodyParser.json());
+
+const JWT_SECRET = 'ClaveDecodeTOken'; // Valor hardcodeado - pruebas
 
 // Registro de usuarios
 router.post('/register', async (req, res) => {
@@ -59,31 +62,28 @@ router.post('/register', async (req, res) => {
 });
 
 
-// Inicio de sesion
+// Inicio de sesión
 router.post('/login', async (req, res) => {
   const { nombre_usuario, contrasena_usuario } = req.body;
 
   try {
-    
-    // Consulta a la base de datos para encontrar el usuario
-    console.log(req.body);
     const result = await pool.query("SELECT * FROM usuarios WHERE nombre_usuario = $1;", [nombre_usuario]);
-    console.log(result);
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
-
-      // Verificar la contraseña
       const isValid = await bcrypt.compare(contrasena_usuario, loginData.contrasena_usuario);
 
       if (isValid) {
-        res.json({ message: 'Inicio de sesión exitoso.' });
+        const token = jwt.sign(
+          { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
+          JWT_SECRET,
+          { expiresIn: '1m' } // Expire en 1 minuto
+        );
+        res.json({ message: 'Inicio de sesión exitoso.', token });
       } else {
         res.status(400).send('Contraseña incorrecta');
       }
     } else {
-      
-      // Si no se encuentra el usuario, enviar un error
       res.status(404).send('Usuario no existe');
     }
   } catch (err) {
@@ -91,7 +91,6 @@ router.post('/login', async (req, res) => {
     res.status(500).send(err);
   }
 });
-
 
 /* RRECUPERACION POR MAIL */
 
