@@ -11,8 +11,6 @@ const pool = new Pool({
   port: 5432,
 });
 
-router.use(bodyParser.json());
-
 const userModel = new UserModel();
 
 const JWT_SECRET = 'ClaveDecodeTOken'; // Valor hardcodeado - pruebas
