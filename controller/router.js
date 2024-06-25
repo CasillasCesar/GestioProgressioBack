@@ -195,7 +195,7 @@ router.post('/login', async (req, res) => {
         const token = jwt.sign(
           { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
           JWT_SECRET,
-          { expiresIn: '200s' } // Ajustar según la política de expiración deseada
+          { expiresIn: '150s' } // Ajustar según la política de expiración deseada
         );
         res.json({ message: 'Inicio de sesión exitoso.', token });
       } else {
@@ -521,7 +521,7 @@ router.post('/refresh-token', async (req, res) => {
     const newToken = jwt.sign(
       { id: decoded.id, nombre_usuario: decoded.nombre_usuario },
       JWT_SECRET,
-      { expiresIn: '30s' } // Renueva el token por otros 30 segundos
+      { expiresIn: '30s' } // Renueva el token por otros 90 segundos
     );
 
     res.json({ message: 'Token refrescado exitosamente.', token: newToken });

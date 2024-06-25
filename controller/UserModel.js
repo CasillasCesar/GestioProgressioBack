@@ -10,6 +10,7 @@ const pool = new Pool({
   port: 5432,
 });
 
+/* MODELO DE USUARIO PARA MANIPULAR LOS DATOS DEL USUARIO EN BD */
 class UserModel {
   async createUser(userData) {
     const client = await pool.connect();
