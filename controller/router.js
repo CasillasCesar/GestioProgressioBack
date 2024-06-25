@@ -4,12 +4,311 @@ const {Pool,Client} = require('pg')
 const router = express.Router();
 router.use(express.json())
 const pool = new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'Proyect_manager',
-    password: 'admin',
-    port: 5432,
-})
+  user: 'postgres',
+  host: 'localhost',
+  database: 'Proyect_manager',
+  password: 'admin',
+  port: 5432,
+});
+
+router.use(bodyParser.json());
+
+const userModel = new UserModel();
+
+const JWT_SECRET = 'ClaveDecodeTOken'; // Valor hardcodeado - pruebas
+
+// Registro de usuarios
+router.post('/register', async (req, res) => {
+  const { nombre_usuario, correo_usuario, contrasena_usuario, empresa_id } = req.body;
+  // console.table({ nombre_usuario, correo_usuario, contrasena_usuario, empresa_id })
+
+  if (!nombre_usuario || !correo_usuario || !contrasena_usuario || !empresa_id) {
+    return res.status(400).json({ message: "Todos los campos son obligatorios." });
+  }
+
+  try {
+    userModel.findUserByUsername(nombre_usuario).then((data)=>{
+      // console.log(data);  
+      if (!data) {
+        userModel.findByEmail(correo_usuario).then((dataMail)=>{
+          // console.log(dataMail);
+          if(!dataMail){
+            userModel.findEmpresa(empresa_id).then(async (dataEmpresa)=>{
+              console.log('dataEmpresa');
+              console.log(dataEmpresa);
+              console.log('dataEmpresa');
+              if(dataEmpresa){
+                const hashedPassword = await bcrypt.hash(contrasena_usuario, 10);
+                const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '150s' });
+                const tokenExpirationDate = new Date(Date.now() + 150 * 1000); // Calcular la fecha de expiración
+
+                // Guarda el usuario con estado pendiente
+                await userModel.createPendingUser({
+                  nombre_usuario,
+                  correo_usuario,
+                  contrasena_usuario: hashedPassword,
+                  verificationToken,
+                  tokenExpires: tokenExpirationDate
+                });
+
+                // Enviar correo de verificación
+                const transporter = nodemailer.createTransport({
+                  service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
+                  auth: {
+                    user: 'testodoo51@gmail.com',
+                    pass: 'twbg mkea dfgq tbzl ',
+                  },
+                });
+                const mailOptions = {
+                  from: '"GestioProgressio" <no-reply@gp.com>',
+                  to: correo_usuario,
+                  subject: 'Verifica tu cuenta en GestioProgressio',
+                  html: `
+                  <!DOCTYPE html>
+                    <html lang="es">
+                    <head>
+                      <meta charset="UTF-8">
+                      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                      <style>
+                        body {
+                          background-color: #f4f4f4;
+                          font-family: 'Arial', sans-serif;
+                          margin: 0;
+                          padding: 0;
+                          color: #333;
+                        }
+                        .container {
+                          background-color: #ffffff;
+                          width: 100%;
+                          max-width: 600px;
+                          margin: 20px auto;
+                          padding: 20px;
+                          box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                          border-radius: 8px;
+                        }
+                        p {
+                          font-size: 16px;
+                        }
+                        a {
+                          display: inline-block;
+                          background-color: #007BFF;
+                          color: #ffffff;
+                          padding: 10px 20px;
+                          margin: 20px 0;
+                          border-radius: 5px;
+                          text-decoration: none;
+                          font-weight: bold;
+                        }
+                        a href{
+                          color: #fffff;
+                        }
+                        a:hover {
+                          background-color: #0056b3;
+                        }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="container">
+                        <h2>Hola, ${nombre_usuario}</h2>
+                        <p>Gracias por registrarte en nuestra plataforma. Estás a solo un paso de activar tu cuenta y empezar a utilizar nuestros servicios.</p>
+                        <p>Por favor, confirma tu cuenta haciendo clic en el siguiente enlace:</p>
+                        <a href="http://${req.headers.host}/verify-account?token=${verificationToken}">Verificar Cuenta</a>
+                        <p>Si no has solicitado este correo, puedes ignorarlo de forma segura.</p>
+                      </div>
+                    </body>
+                    </html>
+                  `
+                };
+
+                await transporter.sendMail(mailOptions);
+                res.status(201).json({ message: "Registro exitoso. Por favor revisa tu correo electrónico para activar la cuenta." });
+              }else{
+                return res.status(409).json({ message: "No se encontro la empresa" });
+              }
+            })
+          }else{
+            return res.status(409).json({ message: "El correo electrónico ya está en uso." });
+          }
+        })
+      }else{
+        return res.status(409).json({ message: "El nombre de usuario ya existe." });
+      }
+    })
+  } catch (error) {
+    console.error('Error al registrar usuario:', error);
+    res.status(500).json({ message: "Error interno del servidor." });
+  }
+});
+
+// Verificar la cuenta del usuario
+router.get('/verify-account', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).send('Token de verificación requerido.');
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET); // Asegúrate de que JWT_SECRET es una constante definida y accesible.
+    const user = await userModel.findByEmail(decoded.correo_usuario);
+
+    if (user) {
+      if (new Date(user.token_expires) > new Date()) {
+        // Si el token aún no ha expirado y el usuario aún no está verificado, procede a verificarlo.
+        const verified = await userModel.activateUser(decoded.correo_usuario);
+        if (verified) {
+          res.sendFile(path.join(__dirname, './confirmation.html')); // Asegúrate de que la ruta es correcta y el archivo existe.
+        } else {
+          res.status(400).send('No se pudo verificar la cuenta.');
+        }
+      } else {
+        // Si el token ha expirado, elimina al usuario de la base de datos.
+        await userModel.deleteUser(decoded.correo_usuario);
+        res.status(403).send('Token de verificación expirado y el usuario ha sido eliminado.');
+      }
+    } else {
+      res.status(404).send('Usuario no encontrado.');
+    }
+  } catch (error) {
+    console.error('Error al verificar el usuario:', error);
+    if (error.name === 'TokenExpiredError') {
+      // Intenta eliminar al usuario solo si el error es debido a que el token ha expirado.
+      await userModel.deleteUser(decoded.correo_usuario);
+      res.status(403).send('Token de verificación expirado y el usuario ha sido eliminado.');
+    } else {
+      res.status(500).send('Error al verificar la cuenta.');
+    }
+  }
+});
+
+
+// Inicio de sesión
+router.post('/login', async (req, res) => {
+  const { nombre_usuario, contrasena_usuario } = req.body;
+
+  try {
+    const result = await pool.query("SELECT * FROM usuarios WHERE nombre_usuario = $1;", [nombre_usuario]);
+
+    if (result.rows.length > 0) {
+      const loginData = result.rows[0];
+
+      // Verificar si el usuario está activo o verificado
+      if (!loginData.is_verified) {
+        return res.status(403).json({ message: 'Cuenta no verificada. Por favor, verifica tu correo electrónico.' });
+      }
+
+      const isValid = await bcrypt.compare(contrasena_usuario, loginData.contrasena_usuario);
+
+      if (isValid) {
+        const token = jwt.sign(
+          { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
+          JWT_SECRET,
+          { expiresIn: '200s' } // Ajustar según la política de expiración deseada
+        );
+        res.json({ message: 'Inicio de sesión exitoso.', token });
+      } else {
+        res.status(400).send('Contraseña incorrecta');
+      }
+    } else {
+      res.status(404).send('Usuario no existe');
+    }
+  } catch (err) {
+    console.error('Error al iniciar sesión:', err);
+    res.status(500).send(err);
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
+    auth: {
+      user: 'testodoo51@gmail.com',
+      pass: 'twbg mkea dfgq tbzl ',
+    },
+  });
+
+  const { email } = req.body;
+  const user = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+
+  if (user.rows.length === 0) {
+    res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
+    return;
+  }
+
+  // Crear un token de restablecimiento de contraseña
+  const token = crypto.randomBytes(20).toString('hex');
+
+  // Establecer el token en la base de datos junto con una fecha de expiración
+  const expiry = new Date();
+  expiry.setHours(expiry.getHours() + 1); // El token expira en 1 hora
+
+  await pool.query('UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE email = $3', [token, expiry, email]);
+
+  // Opciones de correo electrónico
+  let mailOptions = {
+    to: email,
+    from: 'passwordreset@demo.com',
+    subject: 'Password Reset',
+    text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n` +
+      `Please click on the following link, or paste this into your browser to complete the process:\n\n` +
+      `http://${req.headers.host}/reset-password/${token}\n\n` +
+      `If you did not request this, please ignore this email and your password will remain unchanged.\n`
+  };
+
+  // Enviar el correo electrónico
+  transporter.sendMail(mailOptions, (err) => {
+    if (err) {
+      res.status(500).send('Error sending email');
+    } else {
+      res.status(200).send('An e-mail has been sent to ' + email + ' with further instructions.');
+    }
+  });
+});
+
+
+let sendCorreo = (email, nombre, nombreActividad, fechaInicio, fechaFin, descripcion) => {
+  const nodemailer = require('nodemailer');
+
+  // Configuración del transportador (SMTP)
+  const transporter = nodemailer.createTransport({
+    service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
+    auth: {
+      user: 'testodoo51@gmail.com',
+      pass: 'twbg mkea dfgq tbzl ',
+    },
+  });
+
+  // Detalles del mensaje
+  const mailOptions = {
+    from: 'gestioprogressio@gmail.com',
+    to: `${email}`,
+    subject: 'Notificacion de Integracion de Actividades',
+    text: `
+        Estimado ${nombre}
+        Espero que este mensaje te encuentre bien. Me complace informarte que has sido integrado para participar en una actividad crucial dentro de nuestro proyecto actual. Tu contribución y experiencia serán fundamentales para el éxito de esta fase.
+        A continuación, te proporcionaré algunos detalles adicionales sobre la actividad:
+        Nombre de la actividad:
+        ${nombreActividad}
+        Fecha Inicio
+        ${fechaInicio}
+        Fecha de Fin
+        ${fechaFin}
+        Descripcion de las actividad
+        ${descripcion}
+        `,
+  };
+
+  // Envío del correo electrónico
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error(error);
+    } else {
+      console.log('Correo electrónico enviado: ' + info.response);
+    }
+  });
+
+}
+
 // const client = new Client();
 router.get(
     '/conection',
