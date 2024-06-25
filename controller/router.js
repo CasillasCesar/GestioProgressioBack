@@ -1,5 +1,5 @@
 'use strict'
-import {UserModel} from './UserModel'
+const UserModel = require('./UserModel')
 const express = require('express')
 const {Pool,Client} = require('pg')
 const router = express.Router();
