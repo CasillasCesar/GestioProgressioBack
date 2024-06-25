@@ -212,18 +212,16 @@ router.post('/login', async (req, res) => {
 
 /* RRECUPERACION POR MAIL */
 
-// App servicio Gmail
-let transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'frankrmz.fa37@gmail.com',
-    pass: 'tucontraseña'
-  }
-});
-
-
 // Recuperacion de contrseña
 router.post('/forgot-password', async (req, res) => {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
+    auth: {
+      user: 'testodoo51@gmail.com',
+      pass: 'twbg mkea dfgq tbzl ',
+    },
+  });
+
   const { email } = req.body;
   const user = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
 
