@@ -1,4 +1,6 @@
 'use strict'
+const bcrypt = require('bcrypt')
+const UserModel = require('./UserModel')
 const express = require('express')
 const { Pool, Client } = require('pg')
 const router = express.Router();
@@ -15,11 +17,9 @@ const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
   database: 'Proyect_manager',
-  password: 'nks123',
+  password: 'admin',
   port: 5432,
 });
-
-router.use(bodyParser.json());
 
 const userModel = new UserModel();
 
@@ -27,105 +27,121 @@ const JWT_SECRET = 'ClaveDecodeTOken'; // Valor hardcodeado - pruebas
 
 // Registro de usuarios
 router.post('/register', async (req, res) => {
-  const { nombre_usuario, correo_usuario, contrasena_usuario } = req.body;
+  const { nombre_usuario, correo_usuario, contrasena_usuario, empresa_id } = req.body;
+  // console.table({ nombre_usuario, correo_usuario, contrasena_usuario, empresa_id })
 
-  if (!nombre_usuario || !correo_usuario || !contrasena_usuario) {
+  if (!nombre_usuario || !correo_usuario || !contrasena_usuario || !empresa_id) {
     return res.status(400).json({ message: "Todos los campos son obligatorios." });
   }
 
   try {
-    if (await userModel.findUserByUsername(nombre_usuario)) {
-      return res.status(409).json({ message: "El nombre de usuario ya existe." });
-    }
+    userModel.findUserByUsername(nombre_usuario).then((data)=>{
+      // console.log(data);  
+      if (!data) {
+        userModel.findByEmail(correo_usuario).then((dataMail)=>{
+          // console.log(dataMail);
+          if(!dataMail){
+            userModel.findEmpresa(empresa_id).then(async (dataEmpresa)=>{
+              console.log('dataEmpresa');
+              console.log(dataEmpresa);
+              console.log('dataEmpresa');
+              if(dataEmpresa){
+                const hashedPassword = await bcrypt.hash(contrasena_usuario, 10);
+                const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '150s' });
+                const tokenExpirationDate = new Date(Date.now() + 150 * 1000); // Calcular la fecha de expiración
 
-    if (await userModel.findByEmail(correo_usuario)) {
-      return res.status(409).json({ message: "El correo electrónico ya está en uso." });
-    }
+                // Guarda el usuario con estado pendiente
+                await userModel.createPendingUser({
+                  nombre_usuario,
+                  correo_usuario,
+                  contrasena_usuario: hashedPassword,
+                  verificationToken,
+                  tokenExpires: tokenExpirationDate
+                });
 
-    const hashedPassword = await bcrypt.hash(contrasena_usuario, 10);
-    const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '150s' });
-    const tokenExpirationDate = new Date(Date.now() + 150 * 1000); // Calcular la fecha de expiración
+                // Enviar correo de verificación
+                const transporter = nodemailer.createTransport({
+                  service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
+                  auth: {
+                    user: 'testodoo51@gmail.com',
+                    pass: 'twbg mkea dfgq tbzl ',
+                  },
+                });
+                const mailOptions = {
+                  from: '"GestioProgressio" <no-reply@gp.com>',
+                  to: correo_usuario,
+                  subject: 'Verifica tu cuenta en GestioProgressio',
+                  html: `
+                  <!DOCTYPE html>
+                    <html lang="es">
+                    <head>
+                      <meta charset="UTF-8">
+                      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                      <style>
+                        body {
+                          background-color: #f4f4f4;
+                          font-family: 'Arial', sans-serif;
+                          margin: 0;
+                          padding: 0;
+                          color: #333;
+                        }
+                        .container {
+                          background-color: #ffffff;
+                          width: 100%;
+                          max-width: 600px;
+                          margin: 20px auto;
+                          padding: 20px;
+                          box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                          border-radius: 8px;
+                        }
+                        p {
+                          font-size: 16px;
+                        }
+                        a {
+                          display: inline-block;
+                          background-color: #007BFF;
+                          color: #ffffff;
+                          padding: 10px 20px;
+                          margin: 20px 0;
+                          border-radius: 5px;
+                          text-decoration: none;
+                          font-weight: bold;
+                        }
+                        a href{
+                          color: #fffff;
+                        }
+                        a:hover {
+                          background-color: #0056b3;
+                        }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="container">
+                        <h2>Hola, ${nombre_usuario}</h2>
+                        <p>Gracias por registrarte en nuestra plataforma. Estás a solo un paso de activar tu cuenta y empezar a utilizar nuestros servicios.</p>
+                        <p>Por favor, confirma tu cuenta haciendo clic en el siguiente enlace:</p>
+                        <a href="http://${req.headers.host}/verify-account?token=${verificationToken}">Verificar Cuenta</a>
+                        <p>Si no has solicitado este correo, puedes ignorarlo de forma segura.</p>
+                      </div>
+                    </body>
+                    </html>
+                  `
+                };
 
-    // Guarda el usuario con estado pendiente
-    await userModel.createPendingUser({
-      nombre_usuario,
-      correo_usuario,
-      contrasena_usuario: hashedPassword,
-      verificationToken,
-      tokenExpires: tokenExpirationDate
-    });
-
-    // Enviar correo de verificación
-    const transporter = nodemailer.createTransport({
-      service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
-      auth: {
-        user: 'testodoo51@gmail.com',
-        pass: 'twbg mkea dfgq tbzl ',
-      },
-    });
-    const mailOptions = {
-      from: '"GestioProgressio" <no-reply@gp.com>',
-      to: correo_usuario,
-      subject: 'Verifica tu cuenta en GestioProgressio',
-      html: `
-      <!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      background-color: #f4f4f4;
-      font-family: 'Arial', sans-serif;
-      margin: 0;
-      padding: 0;
-      color: #333;
-    }
-    .container {
-      background-color: #ffffff;
-      width: 100%;
-      max-width: 600px;
-      margin: 20px auto;
-      padding: 20px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      border-radius: 8px;
-    }
-    p {
-      font-size: 16px;
-    }
-    a {
-      display: inline-block;
-      background-color: #007BFF;
-      color: #ffffff;
-      padding: 10px 20px;
-      margin: 20px 0;
-      border-radius: 5px;
-      text-decoration: none;
-      font-weight: bold;
-    }
-    a href{
-      color: #fffff;
-    }
-    a:hover {
-      background-color: #0056b3;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Hola, ${nombre_usuario}</h2>
-    <p>Gracias por registrarte en nuestra plataforma. Estás a solo un paso de activar tu cuenta y empezar a utilizar nuestros servicios.</p>
-    <p>Por favor, confirma tu cuenta haciendo clic en el siguiente enlace:</p>
-    <a href="http://${req.headers.host}/verify-account?token=${verificationToken}">Verificar Cuenta</a>
-    <p>Si no has solicitado este correo, puedes ignorarlo de forma segura.</p>
-  </div>
-</body>
-</html>
-`
-    };
-
-    await transporter.sendMail(mailOptions);
-    res.status(201).json({ message: "Registro exitoso. Por favor revisa tu correo electrónico para activar la cuenta." });
+                await transporter.sendMail(mailOptions);
+                res.status(201).json({ message: "Registro exitoso. Por favor revisa tu correo electrónico para activar la cuenta." });
+              }else{
+                return res.status(409).json({ message: "No se encontro la empresa" });
+              }
+            })
+          }else{
+            return res.status(409).json({ message: "El correo electrónico ya está en uso." });
+          }
+        })
+      }else{
+        return res.status(409).json({ message: "El nombre de usuario ya existe." });
+      }
+    })
   } catch (error) {
     console.error('Error al registrar usuario:', error);
     res.status(500).json({ message: "Error interno del servidor." });
@@ -195,7 +211,7 @@ router.post('/login', async (req, res) => {
         const token = jwt.sign(
           { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
           JWT_SECRET,
-          { expiresIn: '150s' } // Ajustar según la política de expiración deseada
+          { expiresIn: '200s' } // Ajustar según la política de expiración deseada
         );
         res.json({ message: 'Inicio de sesión exitoso.', token });
       } else {
@@ -210,9 +226,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-/* RRECUPERACION POR MAIL */
-
-// Recuperacion de contrseña
 router.post('/forgot-password', async (req, res) => {
   const transporter = nodemailer.createTransport({
     service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando

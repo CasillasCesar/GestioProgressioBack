@@ -6,21 +6,28 @@ const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
   database: 'Proyect_manager',
-  password: 'nks123',
+  password: 'admin',
   port: 5432,
 });
 
-/* MODELO DE USUARIO PARA MANIPULAR LOS DATOS DEL USUARIO EN BD */
 class UserModel {
   async createUser(userData) {
     const client = await pool.connect();
     try {
+      console.log(102);
       if (!userData.contrasena_usuario){
         throw new Error("El campo no debe estar vacio");
       }
       const hashedPassword = await bcrypt.hash(userData.contrasena_usuario, 10);
+      
+      // Buscamos si es que existe la empresa registrada
+      console.log('abajo');
+      const r = await client.query('SELECT * FROM empresa WHERE empresaid = $1',[empresa_id]) 
+      console.log(r);
+      console.log('arriba');
+
       const result = await client.query(
-        'INSERT INTO usuarios (nombre_usuario, correo_usuario, contrasena_usuario, verification_token, token_expires) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
+        'INSERT INTO usuarios (nombre, correo, contrasena, verification_token, token_expires) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
         [userData.nombre_usuario, userData.correo_usuario, hashedPassword, userData.verification_token, userData.token_expires]
       );
       return result.rows[0];
@@ -68,6 +75,16 @@ class UserModel {
     const client = await pool.connect();
     try{
       const result = await client.query('SELECT * FROM usuarios WHERE correo_usuario = $1;', [correo_usuario]);
+      return result.rows[0];
+    } finally {
+      client.release();
+    }
+  }
+
+  async findEmpresa(empresa_id){
+    const client = await pool.connect();
+    try{
+      const result = await client.query('SELECT * FROM empresa WHERE access_token = $1;', [empresa_id]);
       return result.rows[0];
     } finally {
       client.release();
