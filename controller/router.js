@@ -1,4 +1,5 @@
 'use strict'
+const bcrypt = require('bcrypt')
 const UserModel = require('./UserModel')
 const express = require('express')
 const {Pool,Client} = require('pg')
