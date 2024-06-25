@@ -10,7 +10,7 @@ const pool = new Pool({
   port: 5432,
 });
 
-class UserModel {
+export class UserModel {
   async createUser(userData) {
     const client = await pool.connect();
     try {
