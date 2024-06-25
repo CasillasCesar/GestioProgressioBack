@@ -84,7 +84,7 @@ class UserModel {
   async findEmpresa(empresa_id){
     const client = await pool.connect();
     try{
-      const result = await client.query('SELECT * FROM empresa WHERE empresaid = $1;', [empresa_id]);
+      const result = await client.query('SELECT * FROM empresa WHERE access_token = $1;', [empresa_id]);
       return result.rows[0];
     } finally {
       client.release();
