@@ -14,8 +14,8 @@ const bcrypt = require('bcrypt')            // Encriptar contraseñas
 
 const pool = new Pool({
   user: 'postgres',
-  host: 'https://gestioprogressioback.onrender.com/',
-  database: 'Proyect_manager',
+  host: 'localhost',
+  database: 'Project_manager',
   password: 'nks123',
   port: 5432,
 });
@@ -46,8 +46,8 @@ router.post('/register', async (req, res) => {
               console.log('dataEmpresa');
               if (dataEmpresa) {
                 const hashedPassword = await bcrypt.hash(contrasena_usuario, 10);
-                const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '150s' });
-                const tokenExpirationDate = new Date(Date.now() + 150 * 1000); // Calcular la fecha de expiración
+                const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '200s' }); // Duracion del token antes de volver a requerir una nueva verificacion
+                const tokenExpirationDate = new Date(Date.now() + 3 * 60000); // Calcular la fecha de expiración = 3m
 
                 // Guarda el usuario con estado pendiente
                 await userModel.createPendingUser({
@@ -69,7 +69,7 @@ router.post('/register', async (req, res) => {
                 const mailOptions = {
                   from: '"GestioProgressio" <no-reply@gpmail.com>',
                   to: correo_usuario,
-                  subject: 'Verifica tu cuenta en GestioProgressio',
+                  subject: 'Verifique su cuenta en GestioProgressio',
                   html: `
                   <!DOCTYPE html>
                     <html lang="es">
@@ -92,6 +92,11 @@ router.post('/register', async (req, res) => {
                           padding: 20px;
                           box-shadow: 0 0 10px rgba(0,0,0,0.1);
                           border-radius: 8px;
+                        }
+                        .header {
+                          text-align: center;
+                          padding-bottom: 20px;
+                          border-bottom: 1px solid #ddd;
                         }
                         p {
                           font-size: 16px;
@@ -123,7 +128,13 @@ router.post('/register', async (req, res) => {
                       </style>
                     </head>
                     <body>
+                    
                       <div class="container">
+                       
+                        <div class="header">
+                        <h1>GestioProgressio</h1>
+                        <h2>Confirme su registro</h2>
+                        </div>
                         <h2>Hola, ${nombre_usuario}</h2>
                         <p>Gracias por registrarte en nuestra plataforma. Estás a solo un paso de activar tu cuenta y empezar a utilizar nuestros servicios.</p>
                         <p>Por favor, confirma tu cuenta haciendo clic en el siguiente enlace:</p>
@@ -220,64 +231,33 @@ router.post('/login', async (req, res) => {
       const isValid = await bcrypt.compare(contrasena_usuario, loginData.contrasena_usuario);
 
       if (isValid) {
-        const token = jwt.sign(
-          { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
-          JWT_SECRET,
-          { expiresIn: '200s' } // Ajustar según la política de expiración deseada
-        );
-        res.json({ message: 'Inicio de sesión exitoso.', token });
-      } else {
-        res.status(400).send('Contraseña incorrecta');
-      }
-    } else {
-      res.status(404).send('Usuario no existe');
-    }
-  } catch (err) {
-    console.error('Error al iniciar sesión:', err);
-    res.status(500).send(err);
-  }
-});
+        // Generar un código de verificación
+        const verificationCode = crypto.randomBytes(3).toString('hex'); // Código de 6 caracteres
 
+        // Guardar el código de verificación temporalmente en la base de datos
+        await pool.query('UPDATE usuarios SET verification_code = $1, verification_code_expires = $2 WHERE nombre_usuario = $3', 
+                         [verificationCode, new Date(Date.now() + 3 * 60000), nombre_usuario]); // El código expira en 3 minutos
 
-// Recuperar contraseña
-router.post('/forgot-password', async (req, res) => {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
-    auth: {
-      user: 'testodoo51@gmail.com',
-      pass: 'twbg mkea dfgq tbzl ',
-    },
-  });
+        // Enviar el código de verificación por correo electrónico
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: 'testodoo51@gmail.com',
+            pass: 'twbg mkea dfgq tbzl',
+          },
+        });
 
-  const { correo_usuario } = req.body;
-  const user = await pool.query('SELECT * FROM usuarios WHERE correo_usuario = $1', [correo_usuario]);
-
-  if (user.rows.length === 0) {
-    res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
-    return;
-  }
-
-  // Crear un token de restablecimiento de contraseña
-  const token = crypto.randomBytes(20).toString('hex');
-
-  // Establecer el token en la base de datos junto con una fecha de expiración
-  const expiry = new Date();
-  expiry.setHours(expiry.getMinutes() + 2); // El token expira en 2 minutos
-
-  await pool.query('UPDATE usuarios SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE correo_usuario = $3', [token, expiry, correo_usuario]);
-
-  // Opciones de correo electrónico
-  let mailOptions = {
-    to: correo_usuario,
-    from: 'GestioProgressio" <no-reply@gpmail.com>',
-    subject: 'Restablecer contraseña',
-    html: `
+        const mailOptions = {
+          to: loginData.correo_usuario,
+          from: 'GestioProgressio" <no-reply@gpmail.com>',
+          subject: 'Verificacion de dos pasos',
+          html: `
     <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GestioProgressio Password Reset</title>
+  <title>Verificacion de dos pasos</title>
   <style>
     body {
       font-family: sans-serif;
@@ -317,7 +297,151 @@ router.post('/forgot-password', async (req, res) => {
   <div class="container">
     <div class="header">
       <h1>GestioProgressio</h1>
-      <h2>Reset Password</h2>
+      <h2>Verifique el acceso a su cuenta</h2>
+    </div>
+    <div class="content">
+      <p>Su código de verificación es el siguiente:</p>
+      <p><b>${verificationCode}</b></p>
+      <br>
+      <p>¡Saludos!</p>
+    </div>
+    <div class="footer">
+      <p>GestioProgressio, Inc.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `
+        };
+
+        transporter.sendMail(mailOptions, (err) => {
+          if (err) {
+            console.error('Error al enviar correo:', err);
+            return res.status(500).send('Error al enviar correo');
+          }
+          res.status(200).send('Código de verificación enviado a su correo electrónico.');
+        });
+      } else {
+        res.status(400).send('Contraseña incorrecta');
+      }
+    } else {
+      res.status(404).send('Usuario no existe');
+    }
+  } catch (err) {
+    console.error('Error al iniciar sesión:', err);
+    res.status(500).send(err);
+  }
+});
+
+// Verificar el código de verificación
+router.post('/verify-code', async (req, res) => {
+  const { nombre_usuario, verificationCode } = req.body;
+
+  try {
+    const result = await pool.query("SELECT * FROM usuarios WHERE nombre_usuario = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre_usuario, verificationCode]);
+
+    if (result.rows.length > 0) {
+      const loginData = result.rows[0];
+
+      // Generar un JWT
+      const token = jwt.sign(
+        { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
+        JWT_SECRET,
+        { expiresIn: '200s' } // Duracion del token antes de volver a requerir una nueva verificacion
+      );
+
+      // Limpiar el código de verificación
+      await pool.query('UPDATE usuarios SET verification_code = NULL, verification_code_expires = NULL WHERE nombre_usuario = $1', [nombre_usuario]);
+
+      res.json({ message: 'Autenticación exitosa.', token });
+    } else {
+      res.status(400).send('Código de verificación inválido o expirado');
+    }
+  } catch (err) {
+    console.error('Error al verificar el código:', err);
+    res.status(500).send(err);
+  }
+});
+
+// Recuperar contraseña
+router.post('/forgot-password', async (req, res) => {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
+    auth: {
+      user: 'testodoo51@gmail.com',
+      pass: 'twbg mkea dfgq tbzl ',
+    },
+  });
+
+  const { correo_usuario } = req.body;
+  const user = await pool.query('SELECT * FROM usuarios WHERE correo_usuario = $1', [correo_usuario]);
+
+  if (user.rows.length === 0) {
+    res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
+    return;
+  }
+
+  // Crear un token de restablecimiento de contraseña
+  const token = crypto.randomBytes(20).toString('hex');
+
+  // Establecer el token en la base de datos junto con una fecha de expiración
+  const expiry = new Date();
+  expiry.setHours(expiry.getMinutes() + 3); // El token expira en 2 minutos
+
+  await pool.query('UPDATE usuarios SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE correo_usuario = $3', [token, expiry, correo_usuario]);
+
+  // Opciones de correo electrónico
+  let mailOptions = {
+    to: correo_usuario,
+    from: 'GestioProgressio" <no-reply@gpmail.com>',
+    subject: 'Restablecer contraseña',
+    html: `
+    <!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restablecer contraseña</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+      border-radius: 5px;
+      background-color: #f5f5f5;
+    }
+    .header {
+      text-align: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #ddd;
+    }
+    .content {
+      padding: 20px;
+    }
+    .link {
+      color: #007bff;
+      text-decoration: none;
+    }
+    .footer {
+      text-align: center;
+      padding-top: 20px;
+    }
+    .footer p{
+      font-size: 1.2em;
+      font-weight: bolder;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>GestioProgressio</h1>
+      <h2>Restablezca la contraseña de su cuenta</h2>
     </div>
     <div class="content">
       <p>Si ha recibido este correo es porque tu (o alguien mas) solicitó restablecer la contraseña de su cuenta.</p>
