@@ -19,8 +19,6 @@ const pool = new Pool({
   password: 'nks123',
   port: 5432,
 });
-const jwt = require('jsonwebtoken')
-const nodemailer = require('nodemailer')
 
 const userModel = new UserModel();
 
