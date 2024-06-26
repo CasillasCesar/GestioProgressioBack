@@ -14,8 +14,8 @@ const bcrypt = require('bcrypt')            // Encriptar contraseñas
 
 const pool = new Pool({
   user: 'postgres',
-  host: 'localhost',
-  database: 'Project_manager',
+  host: 'https://gestioprogressioback.onrender.com/',
+  database: 'Proyect_manager',
   password: 'nks123',
   port: 5432,
 });
