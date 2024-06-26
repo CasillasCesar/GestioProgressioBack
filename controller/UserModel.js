@@ -57,7 +57,7 @@ class UserModel {
   async activateUser(correo_usuario) {
     const client = await pool.connect();
     try {
-      const result = await client.query('UPDATE persona SET is_verified = true WHERE correo_usuario = $1 AND is_verified = false RETURNING *', [correo_usuario]);
+      const result = await client.query('UPDATE persona SET is_verified = true WHERE email = $1 AND is_verified = false RETURNING *', [correo_usuario]);
       return result.rows[0];
     } finally {
       client.release();
