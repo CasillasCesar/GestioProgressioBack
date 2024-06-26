@@ -21,13 +21,13 @@ class UserModel {
       const hashedPassword = await bcrypt.hash(userData.contrasena_usuario, 10);
       
       // Buscamos si es que existe la empresa registrada
-      console.log('abajo');
-      const r = await client.query('SELECT * FROM empresa WHERE empresaid = $1',[empresa_id]) 
-      console.log(r);
-      console.log('arriba');
+      // console.log('abajo');
+      // const r = await client.query('SELECT * FROM empresa WHERE empresaid = $1',[empresa_id]) 
+      // console.log(r);
+      // console.log('arriba');
 
       const result = await client.query(
-        'INSERT INTO usuarios (nombre, correo, contrasena, verification_token, token_expires) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
+        'INSERT INTO persona (nombre, correo, contrasena, verification_token, token_expires) VALUES ($1, $2, $3, $4, $5) RETURNING *;',
         [userData.nombre_usuario, userData.correo_usuario, hashedPassword, userData.verification_token, userData.token_expires]
       );
       return result.rows[0];
@@ -38,13 +38,16 @@ class UserModel {
     }
   }
 
-  async createPendingUser({ nombre_usuario, correo_usuario, contrasena_usuario, verificationToken, tokenExpires }) {
+  async createPendingUser({ nombre_usuario, correo_usuario, contrasena_usuario, verificationToken, tokenExpires, empresa_id }) {
     const client = await pool.connect();
+    console.log(empresa_id);
     try {
+      console.log(`INSERT INTO persona (nombre, email, contrasena, verification_token, token_expires,empresaid,is_verified) VALUES (${nombre_usuario}, ${correo_usuario}, ${contrasena_usuario}, ${verificationToken}, ${tokenExpires}, ${empresa_id},false)`);
       // Inserta el usuario en la base de datos con el token de verificación y la fecha de expiración
-      await client.query('INSERT INTO usuarios (nombre_usuario, correo_usuario, contrasena_usuario, verification_token, token_expires, is_verified) VALUES ($1, $2, $3, $4, $5, false)', 
-      [nombre_usuario, correo_usuario, contrasena_usuario, verificationToken, tokenExpires]);
+      await client.query('INSERT INTO persona (nombre, email, contrasena, verification_token, token_expires,empresaid,is_verified) VALUES ($1, $2, $3, $4, $5,$6 , false)', 
+      [nombre_usuario, correo_usuario, contrasena_usuario, verificationToken, tokenExpires , empresa_id]);
     } catch (error) {
+      console.log("Aqui");
       throw error;
     } finally {
       client.release();
@@ -54,7 +57,7 @@ class UserModel {
   async activateUser(correo_usuario) {
     const client = await pool.connect();
     try {
-      const result = await client.query('UPDATE usuarios SET is_verified = true WHERE correo_usuario = $1 AND is_verified = false RETURNING *', [correo_usuario]);
+      const result = await client.query('UPDATE persona SET is_verified = true WHERE correo_usuario = $1 AND is_verified = false RETURNING *', [correo_usuario]);
       return result.rows[0];
     } finally {
       client.release();
@@ -64,7 +67,7 @@ class UserModel {
   async findUserByUsername(nombre_usuario) {
     const client = await pool.connect();
     try {
-      const result = await client.query('SELECT * FROM usuarios WHERE nombre_usuario = $1;', [nombre_usuario]);
+      const result = await client.query('SELECT * FROM persona WHERE nombre = $1;', [nombre_usuario]);
       return result.rows[0];
     } finally {
       client.release();
@@ -74,7 +77,7 @@ class UserModel {
   async findByEmail(correo_usuario){
     const client = await pool.connect();
     try{
-      const result = await client.query('SELECT * FROM usuarios WHERE correo_usuario = $1;', [correo_usuario]);
+      const result = await client.query('SELECT * FROM persona WHERE email = $1;', [correo_usuario]);
       return result.rows[0];
     } finally {
       client.release();
@@ -95,7 +98,7 @@ class UserModel {
     const client = await pool.connect();
     try {
       const result = await client.query(
-        'UPDATE usuarios SET nombre_usuario = $1, correo_usuario = $2 WHERE id_usuario = $3 RETURNING *;',
+        'UPDATE persona SET nombre = $1, email = $2 WHERE personaid = $3 RETURNING *;',
         [userData.nombre_usuario, userData.correo_usuario, id_usuario]
       );
       return result.rows[0];
@@ -107,7 +110,7 @@ class UserModel {
   async deleteUser(correo_usuario) {
     const client = await pool.connect();
     try {
-      const result = await client.query('DELETE FROM usuarios WHERE correo_usuario = $1;', [correo_usuario]);
+      const result = await client.query('DELETE FROM persona WHERE email = $1;', [correo_usuario]);
       return result.rowCount; // rowCount será 1 si se eliminó el usuario, 0 si no se encontró
     } finally {
       client.release();

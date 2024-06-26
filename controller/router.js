@@ -12,6 +12,8 @@ const pool = new Pool({
   password: 'admin',
   port: 5432,
 });
+const jwt = require('jsonwebtoken')
+const nodemailer = require('nodemailer')
 
 const userModel = new UserModel();
 
@@ -30,7 +32,7 @@ router.post('/register', async (req, res) => {
     userModel.findUserByUsername(nombre_usuario).then((data)=>{
       // console.log(data);  
       if (!data) {
-        userModel.findByEmail(correo_usuario).then((dataMail)=>{
+        userModel.findByEmail(correo_usuario).then(async (dataMail)=>{
           // console.log(dataMail);
           if(!dataMail){
             userModel.findEmpresa(empresa_id).then(async (dataEmpresa)=>{
@@ -48,7 +50,8 @@ router.post('/register', async (req, res) => {
                   correo_usuario,
                   contrasena_usuario: hashedPassword,
                   verificationToken,
-                  tokenExpires: tokenExpirationDate
+                  tokenExpires: tokenExpirationDate, 
+                  empresa_id : dataEmpresa['empresaid']
                 });
 
                 // Enviar correo de verificación
