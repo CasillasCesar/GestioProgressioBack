@@ -26,18 +26,18 @@ const JWT_SECRET = 'ClaveDecodeTOken'; // Valor hardcodeado - pruebas
 
 // Registro de usuarios
 router.post('/register', async (req, res) => {
-  const { nombre_usuario, correo_usuario, contrasena_usuario, empresa_id } = req.body;
-  // console.table({ nombre_usuario, correo_usuario, contrasena_usuario, empresa_id })
+  const { nombre, email, contrasena, empresa_id } = req.body;
+  // console.table({ nombre, email, contrasena, empresa_id })
 
-  if (!nombre_usuario || !correo_usuario || !contrasena_usuario || !empresa_id) {
+  if (!nombre || !email || !contrasena || !empresa_id) {
     return res.status(400).json({ message: "Todos los campos son obligatorios." });
   }
 
   try {
-    userModel.findUserByUsername(nombre_usuario).then((data) => {
+    userModel.findUserByUsername(nombre).then((data) => {
       // console.log(data);  
       if (!data) {
-        userModel.findByEmail(correo_usuario).then(async (dataMail)=>{
+        userModel.findByEmail(email).then(async (dataMail)=>{
           // console.log(dataMail);
           if (!dataMail) {
             userModel.findEmpresa(empresa_id).then(async (dataEmpresa) => {
@@ -45,15 +45,15 @@ router.post('/register', async (req, res) => {
               console.log(dataEmpresa);
               console.log('dataEmpresa');
               if (dataEmpresa) {
-                const hashedPassword = await bcrypt.hash(contrasena_usuario, 10);
-                const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '200s' }); // Duracion del token antes de volver a requerir una nueva verificacion
+                const hashedPassword = await bcrypt.hash(contrasena, 10);
+                const verificationToken = jwt.sign({ nombre, email }, JWT_SECRET, { expiresIn: '200s' }); // Duracion del token antes de volver a requerir una nueva verificacion
                 const tokenExpirationDate = new Date(Date.now() + 3 * 60000); // Calcular la fecha de expiración = 3m
 
                 // Guarda el usuario con estado pendiente
                 await userModel.createPendingUser({
-                  nombre_usuario,
-                  correo_usuario,
-                  contrasena_usuario: hashedPassword,
+                  nombre,
+                  email,
+                  contrasena: hashedPassword,
                   verificationToken,
                   tokenExpires: tokenExpirationDate, 
                   empresa_id : dataEmpresa['empresaid']
@@ -69,7 +69,7 @@ router.post('/register', async (req, res) => {
                 });
                 const mailOptions = {
                   from: '"GestioProgressio" <no-reply@gpmail.com>',
-                  to: correo_usuario,
+                  to: email,
                   subject: 'Verifique su cuenta en GestioProgressio',
                   html: `
                   <!DOCTYPE html>
@@ -136,7 +136,7 @@ router.post('/register', async (req, res) => {
                         <h1>GestioProgressio</h1>
                         <h2>Confirme su registro</h2>
                         </div>
-                        <h2>Hola, ${nombre_usuario}</h2>
+                        <h2>Hola, ${nombre}</h2>
                         <p>Gracias por registrarte en nuestra plataforma. Estás a solo un paso de activar tu cuenta y empezar a utilizar nuestros servicios.</p>
                         <p>Por favor, confirma tu cuenta haciendo clic en el siguiente enlace:</p>
                         <a href="http://${req.headers.host}/verify-account?token=${verificationToken}">Verificar Cuenta</a>
@@ -182,12 +182,12 @@ router.get('/verify-account', async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET); // Asegúrate de que JWT_SECRET es una constante definida y accesible.
-    const user = await userModel.findByEmail(decoded.correo_usuario);
+    const user = await userModel.findByEmail(decoded.email);
 
     if (user) {
       if (new Date(user.token_expires) > new Date()) {
         // Si el token aún no ha expirado y el usuario aún no está verificado, procede a verificarlo.
-        const verified = await userModel.activateUser(decoded.correo_usuario);
+        const verified = await userModel.activateUser(decoded.email);
         if (verified) {
           res.sendFile(path.join(__dirname, './confirmation.html')); // Asegúrate de que la ruta es correcta y el archivo existe.
         } else {
@@ -195,7 +195,7 @@ router.get('/verify-account', async (req, res) => {
         }
       } else {
         // Si el token ha expirado, elimina al usuario de la base de datos.
-        await userModel.deleteUser(decoded.correo_usuario);
+        await userModel.deleteUser(decoded.email);
         res.status(403).send('Token de verificación expirado y el usuario ha sido eliminado.');
       }
     } else {
@@ -205,7 +205,7 @@ router.get('/verify-account', async (req, res) => {
     console.error('Error al verificar el usuario:', error);
     if (error.name === 'TokenExpiredError') {
       // Intenta eliminar al usuario solo si el error es debido a que el token ha expirado.
-      await userModel.deleteUser(decoded.correo_usuario);
+      await userModel.deleteUser(decoded.email);
       res.status(403).send('Token de verificación expirado y el usuario ha sido eliminado.');
     } else {
       res.status(500).send('Error al verificar la cuenta.');
@@ -216,10 +216,10 @@ router.get('/verify-account', async (req, res) => {
 
 // Inicio de sesión
 router.post('/login', async (req, res) => {
-  const { nombre_usuario, contrasena_usuario } = req.body;
+  const { nombre, contrasena } = req.body;
 
   try {
-    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1;", [nombre_usuario]);
+    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1;", [nombre]);
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
@@ -229,7 +229,7 @@ router.post('/login', async (req, res) => {
         return res.status(403).json({ message: 'Cuenta no verificada. Por favor, verifica tu correo electrónico.' });
       }
 
-      const isValid = await bcrypt.compare(contrasena_usuario, loginData.contrasena);
+      const isValid = await bcrypt.compare(contrasena, loginData.contrasena);
 
       if (isValid) {
         // Generar un código de verificación
@@ -237,7 +237,7 @@ router.post('/login', async (req, res) => {
 
         // Guardar el código de verificación temporalmente en la base de datos
         await pool.query('UPDATE persona SET verification_code = $1, verification_code_expires = $2 WHERE nombre = $3', 
-                         [verificationCode, new Date(Date.now() + 3 * 60000), nombre_usuario]); // El código expira en 3 minutos
+                         [verificationCode, new Date(Date.now() + 3 * 60000), nombre]); // El código expira en 3 minutos
 
         // Enviar el código de verificación por correo electrónico
         const transporter = nodemailer.createTransport({
@@ -336,23 +336,23 @@ router.post('/login', async (req, res) => {
 
 // Verificar el código de verificación
 router.post('/verify-code', async (req, res) => {
-  const { nombre_usuario, verificationCode } = req.body;
+  const { nombre, verificationCode } = req.body;
 
   try {
-    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre_usuario, verificationCode]);
+    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre, verificationCode]);
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
 
       // Generar un JWT
       const token = jwt.sign(
-        { id: loginData.personaid, nombre_usuario: loginData.nombre },
+        { id: loginData.personaid, nombre: loginData.nombre },
         JWT_SECRET,
         { expiresIn: '200s' } // Duracion del token antes de volver a requerir una nueva verificacion
       );
 
       // Limpiar el código de verificación
-      await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre_usuario]);
+      await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre]);
 
       res.json({ message: 'Autenticación exitosa.', token });
     } else {
@@ -374,8 +374,8 @@ router.post('/forgot-password', async (req, res) => {
     },
   });
 
-  const { correo_usuario } = req.body;
-  const user = await pool.query('SELECT * FROM persona WHERE email = $1', [correo_usuario]);
+  const { email } = req.body;
+  const user = await pool.query('SELECT * FROM persona WHERE email = $1', [email]);
 
   if (user.rows.length === 0) {
     res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
@@ -389,11 +389,11 @@ router.post('/forgot-password', async (req, res) => {
   const expiry = new Date();
   expiry.setHours(expiry.getMinutes() + 3); // El token expira en 2 minutos
 
-  await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, correo_usuario]);
+  await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, email]);
 
   // Opciones de correo electrónico
   let mailOptions = {
-    to: correo_usuario,
+    to: email,
     from: 'GestioProgressio" <no-reply@gpmail.com>',
     subject: 'Restablecer contraseña',
     html: `
@@ -466,7 +466,7 @@ router.post('/forgot-password', async (req, res) => {
     if (err) {
       res.status(500).send('Error al enviar correo');
     } else {
-      res.status(200).send('Se ha enviado correo a ' + correo_usuario + ' para proximos pasos.');
+      res.status(200).send('Se ha enviado correo a ' + email + ' para proximos pasos.');
     }
   });
 });
@@ -773,7 +773,7 @@ router.post('/refresh-token', async (req, res) => {
 
     // Si el token es válido pero está cerca de expirar, emite uno nuevo
     const newToken = jwt.sign(
-      { id: decoded.id, nombre_usuario: decoded.nombre_usuario },
+      { id: decoded.id, nombre: decoded.nombre },
       JWT_SECRET,
       { expiresIn: '30s' } // Renueva el token por otros 90 segundos
     );
