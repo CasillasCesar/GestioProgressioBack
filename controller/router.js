@@ -1,22 +1,21 @@
 'use strict'
-const bcrypt = require('bcrypt')
+
 const UserModel = require('./UserModel')
 const express = require('express')
 const { Pool, Client } = require('pg')
 const router = express.Router();
-const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');        // Crear token autentización
 router.use(express.json());
-const bodyParser = require('body-parser');
-const nodemailer = require('nodemailer');
-const bcrypt = require('bcrypt');
-const UserModel = require('./UserModel');
-const path = require('path'); 
+const nodemailer = require('nodemailer');   // Funciones email
+const path = require('path');               // Cargar archivo de una ruta
+const crypto = require('crypto');           // Generar token 2fa
+const bcrypt = require('bcrypt')            // Encriptar contraseñas
 
 
 const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
-  database: 'Proyect_manager',
+  database: 'Project_manager',
   password: 'nks123',
   port: 5432,
 });
@@ -35,17 +34,17 @@ router.post('/register', async (req, res) => {
   }
 
   try {
-    userModel.findUserByUsername(nombre_usuario).then((data)=>{
+    userModel.findUserByUsername(nombre_usuario).then((data) => {
       // console.log(data);  
       if (!data) {
-        userModel.findByEmail(correo_usuario).then((dataMail)=>{
+        userModel.findByEmail(correo_usuario).then((dataMail) => {
           // console.log(dataMail);
-          if(!dataMail){
-            userModel.findEmpresa(empresa_id).then(async (dataEmpresa)=>{
+          if (!dataMail) {
+            userModel.findEmpresa(empresa_id).then(async (dataEmpresa) => {
               console.log('dataEmpresa');
               console.log(dataEmpresa);
               console.log('dataEmpresa');
-              if(dataEmpresa){
+              if (dataEmpresa) {
                 const hashedPassword = await bcrypt.hash(contrasena_usuario, 10);
                 const verificationToken = jwt.sign({ nombre_usuario, correo_usuario }, JWT_SECRET, { expiresIn: '150s' });
                 const tokenExpirationDate = new Date(Date.now() + 150 * 1000); // Calcular la fecha de expiración
@@ -68,7 +67,7 @@ router.post('/register', async (req, res) => {
                   },
                 });
                 const mailOptions = {
-                  from: '"GestioProgressio" <no-reply@gp.com>',
+                  from: '"GestioProgressio" <no-reply@gpmail.com>',
                   to: correo_usuario,
                   subject: 'Verifica tu cuenta en GestioProgressio',
                   html: `
@@ -113,6 +112,14 @@ router.post('/register', async (req, res) => {
                         a:hover {
                           background-color: #0056b3;
                         }
+                      .footer {
+                          text-align: center;
+                          padding-top: 20px;
+                        }
+                        .footer p{
+                          font-size: 1.2em;
+                          font-weight: bolder;
+                        }
                       </style>
                     </head>
                     <body>
@@ -122,7 +129,12 @@ router.post('/register', async (req, res) => {
                         <p>Por favor, confirma tu cuenta haciendo clic en el siguiente enlace:</p>
                         <a href="http://${req.headers.host}/verify-account?token=${verificationToken}">Verificar Cuenta</a>
                         <p>Si no has solicitado este correo, puedes ignorarlo de forma segura.</p>
+                             <br>
+                             <p>¡Saludos!</p>
                       </div>
+                      <div class="footer">
+                             <p>GestioProgressio</p>
+                       </div>
                     </body>
                     </html>
                   `
@@ -130,15 +142,15 @@ router.post('/register', async (req, res) => {
 
                 await transporter.sendMail(mailOptions);
                 res.status(201).json({ message: "Registro exitoso. Por favor revisa tu correo electrónico para activar la cuenta." });
-              }else{
+              } else {
                 return res.status(409).json({ message: "No se encontro la empresa" });
               }
             })
-          }else{
+          } else {
             return res.status(409).json({ message: "El correo electrónico ya está en uso." });
           }
         })
-      }else{
+      } else {
         return res.status(409).json({ message: "El nombre de usuario ya existe." });
       }
     })
@@ -226,6 +238,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
+
+// Recuperar contraseña
 router.post('/forgot-password', async (req, res) => {
   const transporter = nodemailer.createTransport({
     service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
@@ -235,8 +249,8 @@ router.post('/forgot-password', async (req, res) => {
     },
   });
 
-  const { email } = req.body;
-  const user = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+  const { correo_usuario } = req.body;
+  const user = await pool.query('SELECT * FROM usuarios WHERE correo_usuario = $1', [correo_usuario]);
 
   if (user.rows.length === 0) {
     res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
@@ -248,29 +262,133 @@ router.post('/forgot-password', async (req, res) => {
 
   // Establecer el token en la base de datos junto con una fecha de expiración
   const expiry = new Date();
-  expiry.setHours(expiry.getHours() + 1); // El token expira en 1 hora
+  expiry.setHours(expiry.getMinutes() + 2); // El token expira en 2 minutos
 
-  await pool.query('UPDATE users SET reset_password_token = $1, reset_password_expires = $2 WHERE email = $3', [token, expiry, email]);
+  await pool.query('UPDATE usuarios SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE correo_usuario = $3', [token, expiry, correo_usuario]);
 
   // Opciones de correo electrónico
   let mailOptions = {
-    to: email,
-    from: 'passwordreset@demo.com',
-    subject: 'Password Reset',
-    text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n` +
-      `Please click on the following link, or paste this into your browser to complete the process:\n\n` +
-      `http://${req.headers.host}/reset-password/${token}\n\n` +
-      `If you did not request this, please ignore this email and your password will remain unchanged.\n`
+    to: correo_usuario,
+    from: 'GestioProgressio" <no-reply@gpmail.com>',
+    subject: 'Restablecer contraseña',
+    html: `
+    <!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestioProgressio Password Reset</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+      border-radius: 5px;
+      background-color: #f5f5f5;
+    }
+    .header {
+      text-align: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #ddd;
+    }
+    .content {
+      padding: 20px;
+    }
+    .link {
+      color: #007bff;
+      text-decoration: none;
+    }
+    .footer {
+      text-align: center;
+      padding-top: 20px;
+    }
+    .footer p{
+      font-size: 1.2em;
+      font-weight: bolder;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>GestioProgressio</h1>
+      <h2>Reset Password</h2>
+    </div>
+    <div class="content">
+      <p>Si ha recibido este correo es porque tu (o alguien mas) solicitó restablecer la contraseña de su cuenta.</p>
+      <p>Por favor, de clic en el siguiente enlace para proseguir con su solicitud:</p>
+      <a href="http://${req.headers.host}/reset-password/${token}" class="link">http://${req.headers.host}/reset-password/${token}</a>
+      <p>Si usted no solicitó esto, puede ignorar este correo. Su contraseña no cambiará.</p>
+      <br>
+      <p>¡Saludos!</p>
+    </div>
+    <div class="footer">
+      <p>GestioProgressio</p>
+    </div>
+  </div>
+</body>
+</html>
+    `
   };
 
   // Enviar el correo electrónico
   transporter.sendMail(mailOptions, (err) => {
     if (err) {
-      res.status(500).send('Error sending email');
+      res.status(500).send('Error al enviar correo');
     } else {
-      res.status(200).send('An e-mail has been sent to ' + email + ' with further instructions.');
+      res.status(200).send('Se ha enviado correo a ' + correo_usuario + ' para proximos pasos.');
     }
   });
+});
+
+// Endpoint para verificar el token de restablecimiento de contraseña
+router.get('/reset-password/:token', async (req, res) => {
+  const { token } = req.params;
+  try {
+    const result = await pool.query('SELECT * FROM usuarios WHERE reset_passwd_token = $1', [token]);
+    if (result.rows.length === 0) {
+      return res.status(400).send('Token inválido o expirado');
+    }
+    const user = result.rows[0];
+    const now = new Date();
+    if (now > user.reset_passwd_expires) {
+      await pool.query('UPDATE usuarios SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
+      return res.status(400).send('Token inválido o expirado');
+    }
+    res.status(200).send('Token válido');
+  } catch (err) {
+    console.error('Error al verificar token:', err);
+    res.status(500).send('Error al verificar token');
+  }
+});
+
+// Endpoint para actualizar la contraseña
+router.post('/reset-password/:token', async (req, res) => {
+  const { token } = req.params;
+  const { newPassword } = req.body;
+  try {
+    const result = await pool.query('SELECT * FROM usuarios WHERE reset_passwd_token = $1', [token]);
+    if (result.rows.length === 0) {
+      return res.status(400).send('Token inválido o expirado');
+    }
+    const user = result.rows[0];
+    const now = new Date();
+    if (now > user.reset_passwd_expires) {
+      await pool.query('UPDATE usuarios SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
+      return res.status(400).send('Token inválido o expirado');
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE usuarios SET contrasena_usuario = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
+    res.status(200).send('Contraseña actualizada correctamente');
+  } catch (err) {
+    console.error('Error al actualizar contraseña:', err);
+    res.status(500).send('Error al actualizar contraseña');
+  }
 });
 
 
