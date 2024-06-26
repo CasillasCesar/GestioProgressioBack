@@ -15,7 +15,7 @@ const bcrypt = require('bcrypt')            // Encriptar contraseñas
 const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
-  database: 'Project_manager',
+  database: 'Proyect_manager',
   password: 'nks123',
   port: 5432,
 });
@@ -221,7 +221,7 @@ router.post('/login', async (req, res) => {
   const { nombre_usuario, contrasena_usuario } = req.body;
 
   try {
-    const result = await pool.query("SELECT * FROM usuarios WHERE nombre_usuario = $1;", [nombre_usuario]);
+    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1;", [nombre_usuario]);
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
@@ -238,7 +238,7 @@ router.post('/login', async (req, res) => {
         const verificationCode = crypto.randomBytes(3).toString('hex'); // Código de 6 caracteres
 
         // Guardar el código de verificación temporalmente en la base de datos
-        await pool.query('UPDATE usuarios SET verification_code = $1, verification_code_expires = $2 WHERE nombre_usuario = $3', 
+        await pool.query('UPDATE persona SET verification_code = $1, verification_code_expires = $2 WHERE nombre = $3', 
                          [verificationCode, new Date(Date.now() + 3 * 60000), nombre_usuario]); // El código expira en 3 minutos
 
         // Enviar el código de verificación por correo electrónico
@@ -341,7 +341,7 @@ router.post('/verify-code', async (req, res) => {
   const { nombre_usuario, verificationCode } = req.body;
 
   try {
-    const result = await pool.query("SELECT * FROM usuarios WHERE nombre_usuario = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre_usuario, verificationCode]);
+    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre_usuario, verificationCode]);
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
@@ -354,7 +354,7 @@ router.post('/verify-code', async (req, res) => {
       );
 
       // Limpiar el código de verificación
-      await pool.query('UPDATE usuarios SET verification_code = NULL, verification_code_expires = NULL WHERE nombre_usuario = $1', [nombre_usuario]);
+      await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre_usuario]);
 
       res.json({ message: 'Autenticación exitosa.', token });
     } else {
@@ -377,7 +377,7 @@ router.post('/forgot-password', async (req, res) => {
   });
 
   const { correo_usuario } = req.body;
-  const user = await pool.query('SELECT * FROM usuarios WHERE correo_usuario = $1', [correo_usuario]);
+  const user = await pool.query('SELECT * FROM persona WHERE email = $1', [correo_usuario]);
 
   if (user.rows.length === 0) {
     res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
@@ -391,7 +391,7 @@ router.post('/forgot-password', async (req, res) => {
   const expiry = new Date();
   expiry.setHours(expiry.getMinutes() + 3); // El token expira en 2 minutos
 
-  await pool.query('UPDATE usuarios SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE correo_usuario = $3', [token, expiry, correo_usuario]);
+  await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, correo_usuario]);
 
   // Opciones de correo electrónico
   let mailOptions = {
@@ -477,14 +477,14 @@ router.post('/forgot-password', async (req, res) => {
 router.get('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   try {
-    const result = await pool.query('SELECT * FROM usuarios WHERE reset_passwd_token = $1', [token]);
+    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
       return res.status(400).send('Token inválido o expirado');
     }
     const user = result.rows[0];
     const now = new Date();
     if (now > user.reset_passwd_expires) {
-      await pool.query('UPDATE usuarios SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
+      await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
       return res.status(400).send('Token inválido o expirado');
     }
     res.status(200).send('Token válido');
@@ -499,18 +499,18 @@ router.post('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   const { newPassword } = req.body;
   try {
-    const result = await pool.query('SELECT * FROM usuarios WHERE reset_passwd_token = $1', [token]);
+    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
       return res.status(400).send('Token inválido o expirado');
     }
     const user = result.rows[0];
     const now = new Date();
     if (now > user.reset_passwd_expires) {
-      await pool.query('UPDATE usuarios SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
+      await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
       return res.status(400).send('Token inválido o expirado');
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE usuarios SET contrasena_usuario = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
+    await pool.query('UPDATE persona SET contrasena = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
     res.status(200).send('Contraseña actualizada correctamente');
   } catch (err) {
     console.error('Error al actualizar contraseña:', err);
