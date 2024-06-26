@@ -229,7 +229,7 @@ router.post('/login', async (req, res) => {
         return res.status(403).json({ message: 'Cuenta no verificada. Por favor, verifica tu correo electrónico.' });
       }
 
-      const isValid = await bcrypt.compare(contrasena_usuario, loginData.contrasena_usuario);
+      const isValid = await bcrypt.compare(contrasena_usuario, loginData.contrasena);
 
       if (isValid) {
         // Generar un código de verificación
@@ -249,7 +249,7 @@ router.post('/login', async (req, res) => {
         });
 
         const mailOptions = {
-          to: loginData.correo_usuario,
+          to: loginData.email,
           from: 'GestioProgressio" <no-reply@gpmail.com>',
           subject: 'Verificacion de dos pasos',
           html: `
@@ -346,7 +346,7 @@ router.post('/verify-code', async (req, res) => {
 
       // Generar un JWT
       const token = jwt.sign(
-        { id: loginData.id, nombre_usuario: loginData.nombre_usuario },
+        { id: loginData.personaid, nombre_usuario: loginData.nombre },
         JWT_SECRET,
         { expiresIn: '200s' } // Duracion del token antes de volver a requerir una nueva verificacion
       );
