@@ -629,8 +629,7 @@ router.get('/proyectos', async (req, res) => {
 // Agregar un nuevo empleado
 router.get('/personas/:id', async (req, res) => {
   try {
-    const id = req.params.id;
-    const consulta = await pool.query('SELECT * FROM Persona WHERE jefeid = $1', [id]);
+    const consulta = await pool.query('SELECT * FROM Persona WHERE jefeid = $1', [Number(id)]);
     return res.status(201).json({ 'data': consulta.rows });
   } catch (error) {
     return res.status(500).json({ 'error': error.message });
@@ -654,6 +653,20 @@ router.post('/personas', async (req, res) => {
     const { nombre, email, jefeID } = req.body;
     const consulta = await pool.query('INSERT INTO Persona (nombre, email, jefeID) VALUES ($1, $2, $3) RETURNING *', [nombre, email, jefeID]);
     return res.status(201).json({ 'data': consulta.rows });
+  } catch (error) {
+    return res.status(500).json({ 'error': error.message });
+  }
+});
+
+// Buscar un solo empleado
+router.post('/persona/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if(id){
+      const consulta = await pool.query('SELECT * FROM Persona WHERE personaid=$1',[id]);
+      return res.status(201).json({ 'data': 'El ID ingresado no es valido' });
+    }
+    return res.status(500).json({ 'error': '' });
   } catch (error) {
     return res.status(500).json({ 'error': error.message });
   }
