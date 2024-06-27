@@ -659,14 +659,42 @@ router.post('/personas', async (req, res) => {
 });
 
 // Buscar un solo empleado
-router.post('/persona/:id', async (req, res) => {
+router.get('/personal/:id', async (req, res) => {
   try {
     const id = req.params.id;
     if(id){
-      const consulta = await pool.query('SELECT * FROM Persona WHERE personaid=$1',[id]);
-      return res.status(201).json({ 'data': 'El ID ingresado no es valido' });
+      const consulta = await pool.query('SELECT personaid,nombre,email,jefeid,empresaid,roles FROM Persona WHERE empresaid=$1 AND is_verified=true',[id]);
+      return res.status(201).json({ 'data': consulta.rows });
     }
-    return res.status(500).json({ 'error': '' });
+    return res.status(500).json({ 'error': 'El ID ingresado no es valido' });
+  } catch (error) {
+    return res.status(500).json({ 'error': error.message });
+  }
+});
+
+// Buscar solo empleados con el rol de Proyect Manager
+router.get('/pm/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if(id){
+      const consulta = await pool.query('SELECT personaid,nombre,email,jefeid,empresaid,roles FROM Persona WHERE empresaid=$1 AND is_verified=true AND roles=\'Proyect Manager\'',[id]);
+      return res.status(201).json({ 'data': consulta.rows });
+    }
+    return res.status(500).json({ 'error': 'El ID ingresado no es valido' });
+  } catch (error) {
+    return res.status(500).json({ 'error': error.message });
+  }
+});
+
+// Buscar un solo empleado
+router.get('/persona/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if(id){
+      const consulta = await pool.query('SELECT personaid,nombre,email,jefeid,empresaid,roles FROM Persona WHERE personaid=$1',[id]);
+      return res.status(201).json({ 'data': consulta.rows });
+    }
+    return res.status(500).json({ 'error': 'El ID ingresado no es valido' });
   } catch (error) {
     return res.status(500).json({ 'error': error.message });
   }
