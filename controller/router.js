@@ -13,11 +13,11 @@ const bcrypt = require('bcrypt')            // Encriptar contraseñas
 
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
+  user: 'postgres.fqxbxkwjdecasjtcqtly',
+  host: 'aws-0-us-east-1.pooler.supabase.com',
   database: 'Proyect_manager',
-  password: 'nks123',
-  port: 5432,
+  password: '>B*qW>qjtncm2~c',
+  port: 6543,
 });
 
 const userModel = new UserModel();
