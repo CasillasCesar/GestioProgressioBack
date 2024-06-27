@@ -46,7 +46,7 @@ router.post('/register', async (req, res) => {
               console.log('dataEmpresa');
               if (dataEmpresa) {
                 const hashedPassword = await bcrypt.hash(contrasena, 10);
-                const verificationToken = jwt.sign({ nombre, email }, JWT_SECRET, { expiresIn: '200s' }); // Duracion del token antes de volver a requerir una nueva verificacion
+                const verificationToken = jwt.sign({ nombre, email }, JWT_SECRET, { expiresIn: '190s' }); // Duracion del token antes de volver a requerir una nueva verificacion
                 const tokenExpirationDate = new Date(Date.now() + 3 * 60000); // Calcular la fecha de expiración = 3m
 
                 // Guarda el usuario con estado pendiente
@@ -333,35 +333,86 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Verificar el código de verificación
+// Endpoint para verificar código de verificación al iniciar sesión
 router.post('/verify-code', async (req, res) => {
   const { nombre, verificationCode } = req.body;
 
   try {
+    console.log('Verificación iniciada para:', nombre);
+
+    // Consulta para verificar el código de verificación
     const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre, verificationCode]);
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
+      console.log('Código de verificación válido para:', nombre);
 
       // Generar un JWT
-      const token = jwt.sign(
-        { id: loginData.personaid, nombre: loginData.nombre },
-        JWT_SECRET,
-        { expiresIn: '200s' } // Duracion del token antes de volver a requerir una nueva verificacion
-      );
+      let token;
+      try {
+        token = jwt.sign(
+          { id: loginData.personaid, nombre: loginData.nombre },
+          JWT_SECRET,
+          { expiresIn: '200s' } // Duración del token antes de volver a requerir una nueva verificación
+        );
+        console.log('Token generado para:', nombre);
+      } catch (tokenError) {
+        console.error('Error al generar el token:', tokenError);
+        return res.status(500).send({ message: 'Error al generar el token' });
+      }
 
-      // Limpiar el código de verificación
-      await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre]);
+      // Limpiar el código de verificación solo después de generar el token exitosamente
+      try {
+        await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre]);
+        console.log('Código de verificación limpiado para:', nombre);
+      } catch (updateError) {
+        console.error('Error al limpiar el código de verificación:', updateError);
+        return res.status(500).send({ message: 'Error al limpiar el código de verificación' });
+      }
 
-      res.json({ message: 'Autenticación exitosa.', token });
+      // Devolver el token y mensaje de éxito
+      return res.json({ message: 'Autenticación exitosa.', token });
     } else {
-      res.status(400).send({ message: 'Código de verificación inválido o expirado'});
+      console.log('Código de verificación inválido o expirado para:', nombre);
+      return res.status(400).send({ message: 'Código de verificación inválido o expirado' });
     }
   } catch (err) {
     console.error('Error al verificar el código:', err);
-    res.status(500).send(err);
+    return res.status(500).send({ message: 'Error interno del servidor', error: err });
   }
 });
+
+
+//Endpoint refrescar token de sesion
+router.post('/refresh-token', async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(401).send({ message: 'Token no proporcionado' });
+  }
+
+  try {
+    // Verifica el token existente
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Si el token es válido pero está cerca de expirar, emite uno nuevo
+    const newToken = jwt.sign(
+      { id: decoded.id, nombre: decoded.nombre },
+      JWT_SECRET,
+      { expiresIn: '200s' } // Renueva el token por otros 200 segundos
+    );
+
+    return res.json({ message: 'Token refrescado exitosamente.', token: newToken });
+  } catch (error) {
+    // Si el token es inválido o ha expirado
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(403).send({ message: 'Token expirado' });
+    } else {
+      return res.status(500).send({ message: 'Error al verificar el token' });
+    }
+  }
+});
+
 
 // Recuperar contraseña
 router.post('/forgot-password', async (req, res) => {
@@ -377,7 +428,7 @@ router.post('/forgot-password', async (req, res) => {
   const user = await pool.query('SELECT * FROM persona WHERE email = $1', [email]);
 
   if (user.rows.length === 0) {
-    res.status(400).send('No hay cuentas con esta direccion de correo electrónico.');
+    res.status(400).send( {message: 'No hay cuentas con esta direccion de correo electrónico.'});
     return;
   }
 
@@ -386,7 +437,7 @@ router.post('/forgot-password', async (req, res) => {
 
   // Establecer el token en la base de datos junto con una fecha de expiración
   const expiry = new Date();
-  expiry.setHours(expiry.getMinutes() + 3); // El token expira en 2 minutos
+  expiry.setHours(expiry.getHours() + 1); // El token expira en x minutos
 
   await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, email]);
 
@@ -446,7 +497,7 @@ router.post('/forgot-password', async (req, res) => {
     <div class="content">
       <p>Si ha recibido este correo es porque tu (o alguien mas) solicitó restablecer la contraseña de su cuenta.</p>
       <p>Por favor, de clic en el siguiente enlace para proseguir con su solicitud:</p>
-      <a href="http://${req.headers.host}/reset-password/${token}" class="link">http://${req.headers.host}/reset-password/${token}</a>
+      <a href="http://${req.headers.host}/reset-password/${token}" class="link">Cambiar mi contraseña</a>
       <p>Si usted no solicitó esto, puede ignorar este correo. Su contraseña no cambiará.</p>
       <br>
       <p>¡Saludos!</p>
@@ -463,9 +514,9 @@ router.post('/forgot-password', async (req, res) => {
   // Enviar el correo electrónico
   transporter.sendMail(mailOptions, (err) => {
     if (err) {
-      res.status(500).send('Error al enviar correo');
+      return res.status(500).send({ message: 'Error al enviar correo'});
     } else {
-      res.status(200).send('Se ha enviado correo a ' + email + ' para proximos pasos.');
+      return res.status(200).send({ message: 'Se ha enviado correo a ' + email + ' para proximos pasos.'});
     }
   });
 });
@@ -476,42 +527,39 @@ router.get('/reset-password/:token', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
-      return res.status(400).send('Token inválido o expirado');
+      return res.status(400).send({ message: 'Token inválido o expirado'});
     }
     const user = result.rows[0];
     const now = new Date();
     if (now > user.reset_passwd_expires) {
       await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send('Token inválido o expirado');
+      return res.status(400).send({ message: 'Token inválido o expirado'});
     }
-    res.status(200).send('Token válido');
+    return res.status(200).send({ message: 'Token válido'});
   } catch (err) {
     console.error('Error al verificar token:', err);
     res.status(500).send('Error al verificar token');
   }
 });
 
-// Endpoint para actualizar la contraseña
-router.post('/reset-password/:token', async (req, res) => {
+// Endpoint para verificar el token de restablecimiento de contraseña
+router.get('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
-  const { newPassword } = req.body;
   try {
     const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
-      return res.status(400).send('Token inválido o expirado');
+      return res.status(400).send({ message: 'Token inválido o expirado' });
     }
     const user = result.rows[0];
     const now = new Date();
     if (now > user.reset_passwd_expires) {
       await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send('Token inválido o expirado');
+      return res.status(400).send({ message: 'Token inválido o expirado' });
     }
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE persona SET contrasena = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
-    res.status(200).send('Contraseña actualizada correctamente');
+    return res.status(200).send({ message: 'Token válido' });
   } catch (err) {
-    console.error('Error al actualizar contraseña:', err);
-    res.status(500).send('Error al actualizar contraseña');
+    console.error('Error al verificar token:', err);
+    res.status(500).send('Error al verificar token');
   }
 });
 
@@ -758,35 +806,6 @@ router.post('/agregarActividad', async (req, res) => {
   }
 });
 
-// Endpoint para refrescar el token
-router.post('/refresh-token', async (req, res) => {
-  const { token } = req.body;
-
-  if (!token) {
-    return res.status(401).send('Token no proporcionado');
-  }
-
-  try {
-    // Verifica el token existente
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Si el token es válido pero está cerca de expirar, emite uno nuevo
-    const newToken = jwt.sign(
-      { id: decoded.id, nombre: decoded.nombre },
-      JWT_SECRET,
-      { expiresIn: '30s' } // Renueva el token por otros 90 segundos
-    );
-
-    res.json({ message: 'Token refrescado exitosamente.', token: newToken });
-  } catch (error) {
-    // Si el token es inválido o ha expirado
-    if (error instanceof jwt.TokenExpiredError) {
-      res.status(403).send('Token expirado');
-    } else {
-      res.status(500).send('Error al verificar el token');
-    }
-  }
-});
 
 
 
