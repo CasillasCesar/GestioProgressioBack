@@ -214,7 +214,6 @@ router.get('/verify-account', async (req, res) => {
 });
 
 
-// Inicio de sesión
 router.post('/login', async (req, res) => {
   const { nombre, contrasena } = req.body;
 
@@ -253,84 +252,84 @@ router.post('/login', async (req, res) => {
           from: 'GestioProgressio" <no-reply@gpmail.com>',
           subject: 'Verificacion de dos pasos',
           html: `
-    <!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verificacion de dos pasos</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    .container {
-      padding: 20px;
-      max-width: 600px;
-      margin: 0 auto;
-      border-radius: 5px;
-      background-color: #f5f5f5;
-    }
-    .header {
-      text-align: center;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #ddd;
-    }
-    .content {
-      padding: 20px;
-    }
-    .link {
-      color: #007bff;
-      text-decoration: none;
-    }
-    .footer {
-      text-align: center;
-      padding-top: 20px;
-    }
-    .footer p{
-      font-size: 1.2em;
-      font-weight: bolder;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>GestioProgressio</h1>
-      <h2>Verifique el acceso a su cuenta</h2>
-    </div>
-    <div class="content">
-      <p>Su código de verificación es el siguiente:</p>
-      <p><b>${verificationCode}</b></p>
-      <br>
-      <p>¡Saludos!</p>
-    </div>
-    <div class="footer">
-      <p>GestioProgressio, Inc.</p>
-    </div>
-  </div>
-</body>
-</html>
-    `
+          <!DOCTYPE html>
+          <html lang="es">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Verificacion de dos pasos</title>
+            <style>
+              body {
+                font-family: sans-serif;
+                margin: 0;
+                padding: 0;
+              }
+              .container {
+                padding: 20px;
+                max-width: 600px;
+                margin: 0 auto;
+                border-radius: 5px;
+                background-color: #f5f5f5;
+              }
+              .header {
+                text-align: center;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #ddd;
+              }
+              .content {
+                padding: 20px;
+              }
+              .link {
+                color: #007bff;
+                text-decoration: none;
+              }
+              .footer {
+                text-align: center;
+                padding-top: 20px;
+              }
+              .footer p{
+                font-size: 1.2em;
+                font-weight: bolder;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>GestioProgressio</h1>
+                <h2>Verifique el acceso a su cuenta</h2>
+              </div>
+              <div class="content">
+                <p>Su código de verificación es el siguiente:</p>
+                <p><b>${verificationCode}</b></p>
+                <br>
+                <p>¡Saludos!</p>
+              </div>
+              <div class="footer">
+                <p>GestioProgressio, Inc.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+          `
         };
 
         transporter.sendMail(mailOptions, (err) => {
           if (err) {
             console.error('Error al enviar correo:', err);
-            return res.status(500).send('Error al enviar correo');
+            return res.status(500).json({ message: 'Error al enviar correo' });
           }
-          res.status(200).send('Código de verificación enviado a su correo electrónico.');
+          return res.status(200).json({ message: 'Código de verificación enviado a su correo electrónico.' });
         });
       } else {
-        res.status(400).send('Contraseña incorrecta');
+        return res.status(400).json({ message: 'Contraseña incorrecta' });
       }
     } else {
-      res.status(404).send('Usuario no existe');
+      return res.status(404).json({ message: 'Usuario no existe' });
     }
   } catch (err) {
-    console.error('Error al iniciar sesión:', err);
-    res.status(500).send(err);
+    console.error('Error al iniciar sesion:', err);
+    return res.status(500).json({ message: 'Error interno del servidor' });
   }
 });
 
@@ -356,7 +355,7 @@ router.post('/verify-code', async (req, res) => {
 
       res.json({ message: 'Autenticación exitosa.', token });
     } else {
-      res.status(400).send('Código de verificación inválido o expirado');
+      res.status(400).send({ message: 'Código de verificación inválido o expirado'});
     }
   } catch (err) {
     console.error('Error al verificar el código:', err);
