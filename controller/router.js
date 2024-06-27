@@ -399,7 +399,7 @@ router.post('/refresh-token', async (req, res) => {
     const newToken = jwt.sign(
       { id: decoded.id, nombre: decoded.nombre },
       JWT_SECRET,
-      { expiresIn: '200s' } // Renueva el token por otros 200 segundos
+      { expiresIn: '100s' } // Renueva el token por otros 200 segundos
     );
 
     return res.json({ message: 'Token refrescado exitosamente.', token: newToken });
@@ -415,115 +415,10 @@ router.post('/refresh-token', async (req, res) => {
 
 
 // Recuperar contraseña
-router.post('/forgot-password', async (req, res) => {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail', // Puedes cambiar esto según el proveedor de correo que estés utilizando
-    auth: {
-      user: 'testodoo51@gmail.com',
-      pass: 'twbg mkea dfgq tbzl ',
-    },
-  });
-
-  const { email } = req.body;
-  const user = await pool.query('SELECT * FROM persona WHERE email = $1', [email]);
-
-  if (user.rows.length === 0) {
-    res.status(400).send( {message: 'No hay cuentas con esta direccion de correo electrónico.'});
-    return;
-  }
-
-  // Crear un token de restablecimiento de contraseña
-  const token = crypto.randomBytes(20).toString('hex');
-
-  // Establecer el token en la base de datos junto con una fecha de expiración
-  const expiry = new Date();
-  expiry.setHours(expiry.getHours() + 1); // El token expira en x minutos
-
-  await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, email]);
-
-  // Opciones de correo electrónico
-  let mailOptions = {
-    to: email,
-    from: 'GestioProgressio" <no-reply@gpmail.com>',
-    subject: 'Restablecer contraseña',
-    html: `
-    <!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Restablecer contraseña</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    .container {
-      padding: 20px;
-      max-width: 600px;
-      margin: 0 auto;
-      border-radius: 5px;
-      background-color: #f5f5f5;
-    }
-    .header {
-      text-align: center;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #ddd;
-    }
-    .content {
-      padding: 20px;
-    }
-    .link {
-      color: #007bff;
-      text-decoration: none;
-    }
-    .footer {
-      text-align: center;
-      padding-top: 20px;
-    }
-    .footer p{
-      font-size: 1.2em;
-      font-weight: bolder;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>GestioProgressio</h1>
-      <h2>Restablezca la contraseña de su cuenta</h2>
-    </div>
-    <div class="content">
-      <p>Si ha recibido este correo es porque tu (o alguien mas) solicitó restablecer la contraseña de su cuenta.</p>
-      <p>Por favor, de clic en el siguiente enlace para proseguir con su solicitud:</p>
-      <a href="http://${req.headers.host}/reset-password/${token}" class="link">Cambiar mi contraseña</a>
-      <p>Si usted no solicitó esto, puede ignorar este correo. Su contraseña no cambiará.</p>
-      <br>
-      <p>¡Saludos!</p>
-    </div>
-    <div class="footer">
-      <p>GestioProgressio</p>
-    </div>
-  </div>
-</body>
-</html>
-    `
-  };
-
-  // Enviar el correo electrónico
-  transporter.sendMail(mailOptions, (err) => {
-    if (err) {
-      return res.status(500).send({ message: 'Error al enviar correo'});
-    } else {
-      return res.status(200).send({ message: 'Se ha enviado correo a ' + email + ' para proximos pasos.'});
-    }
-  });
-});
-
-// Endpoint para verificar el token de restablecimiento de contraseña
-router.get('/reset-password/:token', async (req, res) => {
+// Endpoint para actualizar la contraseña
+router.post('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
+  const { newPassword } = req.body;
   try {
     const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
@@ -535,11 +430,13 @@ router.get('/reset-password/:token', async (req, res) => {
       await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
       return res.status(400).send({ message: 'Token inválido o expirado'});
     }
-    return res.status(200).send({ message: 'Token válido'});
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE persona SET contrasena = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
+    return res.status(200).send({ message: 'Contraseña actualizada correctamente'});
   } catch (err) {
-    console.error('Error al verificar token:', err);
-    res.status(500).send('Error al verificar token');
-  }
+    console.error('Error al actualizar contraseña:', err);
+    return res.status(500).send({ message: 'Error al actualizar contraseña'});
+  }
 });
 
 // Endpoint para verificar el token de restablecimiento de contraseña
@@ -548,20 +445,23 @@ router.get('/reset-password/:token', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
-      return res.status(400).send({ message: 'Token inválido o expirado' });
+      return res.status(400).send('<h1>Token inválido o expirado</h1>');
     }
     const user = result.rows[0];
     const now = new Date();
     if (now > user.reset_passwd_expires) {
       await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send({ message: 'Token inválido o expirado' });
+      return res.status(400).send('<h1>Token inválido o expirado</h1>');
     }
-    return res.status(200).send({ message: 'Token válido' });
+    // Redirigir al frontend
+    return res.redirect(`/reset-password/${token}`);
   } catch (err) {
     console.error('Error al verificar token:', err);
-    res.status(500).send('Error al verificar token');
-  }
+    res.status(500).send('<h1>Error al verificar token</h1>');
+  }
 });
+
+
 
 
 let sendCorreo = (email, nombre, nombreActividad, fechaInicio, fechaFin, descripcion) => {
