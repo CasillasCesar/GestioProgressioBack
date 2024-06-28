@@ -153,7 +153,7 @@ router.post('/register', async (req, res) => {
                 };
 
                 await transporter.sendMail(mailOptions);
-                res.status(201).json({ message: "Registro exitoso. Por favor revisa tu correo electrónico para activar la cuenta." });
+                res.status(201).json({ message: "Registro exitoso. Por favor revisa tu correo para activar tu cuenta." });
               } else {
                 return res.status(409).json({ message: "No se encontro la empresa" });
               }
@@ -167,8 +167,7 @@ router.post('/register', async (req, res) => {
       }
     })
   } catch (error) {
-    console.error('Error al registrar usuario:', error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    res.status(500).json({ message: "Error interno del servidor, intentalo más tarde." });
   }
 });
 
@@ -189,6 +188,7 @@ router.get('/verify-account', async (req, res) => {
         // Si el token aún no ha expirado y el usuario aún no está verificado, procede a verificarlo.
         const verified = await userModel.activateUser(decoded.email);
         if (verified) {
+          //return res.redirect('/login');
           res.sendFile(path.join(__dirname, './confirmation.html')); // Asegúrate de que la ruta es correcta y el archivo existe.
         } else {
           res.status(400).send('No se pudo verificar la cuenta.');
@@ -328,8 +328,7 @@ router.post('/login', async (req, res) => {
       return res.status(404).json({ message: 'Usuario no existe' });
     }
   } catch (err) {
-    console.error('Error al iniciar sesion:', err);
-    return res.status(500).json({ message: 'Error interno del servidor' });
+    return res.status(500).json({ message: 'Error interno del servidor, intenta más tarde' });
   }
 });
 
@@ -353,7 +352,7 @@ router.post('/verify-code', async (req, res) => {
         token = jwt.sign(
           { id: loginData.personaid, nombre: loginData.nombre },
           JWT_SECRET,
-          { expiresIn: '200s' } // Duración del token antes de volver a requerir una nueva verificación
+          { expiresIn: '90s' } // Duración del token antes de volver a requerir una nueva verificación
         );
         console.log('Token generado para:', nombre);
       } catch (tokenError) {
@@ -378,7 +377,7 @@ router.post('/verify-code', async (req, res) => {
     }
   } catch (err) {
     console.error('Error al verificar el código:', err);
-    return res.status(500).send({ message: 'Error interno del servidor', error: err });
+    return res.status(500).send({ message: 'Error interno del servidor, intenta más tarde', error: err });
   }
 });
 
@@ -397,7 +396,7 @@ router.post('/refresh-token', async (req, res) => {
 
     // Si el token es válido pero está cerca de expirar, emite uno nuevo
     const newToken = jwt.sign(
-      { id: decoded.id, nombre: decoded.nombre },
+      { id: decoded.personaid, nombre: decoded.nombre },
       JWT_SECRET,
       { expiresIn: '100s' } // Renueva el token por otros 200 segundos
     );
@@ -422,29 +421,6 @@ router.post('/reset-password/:token', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
-      return res.status(400).send({ message: 'Token inválido o expirado'});
-    }
-    const user = result.rows[0];
-    const now = new Date();
-    if (now > user.reset_passwd_expires) {
-      await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send({ message: 'Token inválido o expirado'});
-    }
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE persona SET contrasena = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
-    return res.status(200).send({ message: 'Contraseña actualizada correctamente'});
-  } catch (err) {
-    console.error('Error al actualizar contraseña:', err);
-    return res.status(500).send({ message: 'Error al actualizar contraseña'});
-  }
-});
-
-// Endpoint para verificar el token de restablecimiento de contraseña
-router.get('/reset-password/:token', async (req, res) => {
-  const { token } = req.params;
-  try {
-    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
-    if (result.rows.length === 0) {
       return res.status(400).send('<h1>Token inválido o expirado</h1>');
     }
     const user = result.rows[0];
@@ -454,15 +430,43 @@ router.get('/reset-password/:token', async (req, res) => {
       return res.status(400).send('<h1>Token inválido o expirado</h1>');
     }
     // Redirigir al frontend
-    return res.redirect(`/reset-password/${token}`);
+    return res.sendFile(path.join(__dirname, './ResetPassword.html')); // Asegúrate de que la ruta es correcta y el archivo existe.
   } catch (err) {
     console.error('Error al verificar token:', err);
     res.status(500).send('<h1>Error al verificar token</h1>');
-  }
+  }
 });
 
+//Endpoint para registrar el cambio de contraseña
+router.post('/reset-password', async (req, res) => {
+  const { token, newPassword, confirmPassword } = req.body;
 
+  if (newPassword !== confirmPassword) {
+    return res.status(400).send('Las contraseñas no coinciden.');
+  }
 
+  try {
+    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
+    if (result.rows.length === 0) {
+      return res.status(400).send('Token inválido o expirado.');
+    }
+    const user = result.rows[0];
+    const now = new Date();
+    if (now > user.reset_passwd_expires) {
+      await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
+      return res.status(400).send('Token inválido o expirado.');
+    }
+
+    // Encriptar la nueva contraseña
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE persona SET password = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
+
+    return res.status(200).send('Contraseña restablecida con éxito.');
+  } catch (err) {
+    console.error('Error al restablecer la contraseña:', err);
+    res.status(500).send('Error al restablecer la contraseña.');
+  }
+});
 
 let sendCorreo = (email, nombre, nombreActividad, fechaInicio, fechaFin, descripcion) => {
   const nodemailer = require('nodemailer');
