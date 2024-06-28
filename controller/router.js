@@ -752,6 +752,14 @@ router.post('/agregarActividad', async (req, res) => {
 });
 
 
+router.post('/update-user/:id',async (req, res)=>{
+  // console.log(req.body);
+  const {jefeid , roles} = req.body;
+  const id = req.params.id;
+  // const consulta = await pool.query('SELECT * FROM persona WHERE personaid = $1',[id]);
+  const consulta = await pool.query('UPDATE persona SET jefeid = $1, roles=$2 WHERE personaid=$3 RETURNING *',[jefeid, roles,id]);
+  return res.status(202).json({data : consulta.rows});
+})
 
 
 module.exports = router;
