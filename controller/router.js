@@ -548,18 +548,19 @@ router.get('/reset-password/:token', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
     if (result.rows.length === 0) {
-      return res.status(400).send({ message: 'Token inválido o expirado' });
+      return res.status(400).send('<h1>Token inválido o expirado</h1>');
     }
     const user = result.rows[0];
     const now = new Date();
     if (now > user.reset_passwd_expires) {
       await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send({ message: 'Token inválido o expirado' });
+      return res.status(400).send('<h1>Token inválido o expirado</h1>');
     }
-    return res.status(200).send({ message: 'Token válido' });
+    // Redirigir al frontend
+    return res.redirect(`/reset-password/${token}`);
   } catch (err) {
     console.error('Error al verificar token:', err);
-    res.status(500).send('Error al verificar token');
+    res.status(500).send('<h1>Error al verificar token</h1>');
   }
 });
 
