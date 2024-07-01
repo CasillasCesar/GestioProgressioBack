@@ -551,7 +551,7 @@ router.get('/reset-password/:token', async (req, res) => {
     }
     // Redirigir al frontend para cambiar la contraseña
     console.log('redireccion exitosa');
-    return res.redirect(`http://localhost:4200/reset-password/${token}`);
+    return res.redirect(`https://gestioprogressiofront.onrender.com/reset-password/${token}`);
   } catch (err) {
     console.log('error de token');
     console.error('Error al verificar token:', err);
