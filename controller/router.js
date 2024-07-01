@@ -876,5 +876,29 @@ router.post('/update-user/:id',async (req, res)=>{
   return res.status(202).json({data : consulta.rows});
 })
 
+// Obtener las actividades asignadas tuyas
+router.get('/activities/:id', async (req, res) => {
+  const id = req.params.id;
+  try {
+    // Utilizamos un JOIN para obtener todas las actividades en una sola consulta
+    const result = await pool.query(`
+      SELECT a.* FROM actividad a
+      JOIN persacti pa ON pa.actividadid = a.actividadid
+      WHERE pa.personaid = $1
+    `, [id]);
+
+    // Verificamos si se encontraron actividades y respondemos adecuadamente
+    if (result.rows.length > 0) {
+      return res.status(200).json({ data: result.rows });
+    } else {
+      return res.status(404).json({ message: "No se encontraron actividades para este ID" });
+    }
+  } catch (error) {
+    // Manejo de errores de la consulta a la base de datos
+    console.error("Error al obtener actividades:", error);
+    return res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
 
 module.exports = router;
