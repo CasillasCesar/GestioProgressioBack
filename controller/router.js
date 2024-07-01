@@ -900,5 +900,28 @@ router.get('/activities/:id', async (req, res) => {
   }
 });
 
+router.post('/update-act/:id', async (req, res) => {
+  const id = req.params.id;
+  const {status}=req.body
+  console.log('Hiiiiiii');
+
+  try {
+    // Utilizamos un JOIN para obtener todas las actividades en una sola consulta
+    const result = await pool.query(`
+      UPDATE actividad SET status = $1 WHERE actividadid = $2;
+    `, [status,id]);
+
+    // Verificamos si se encontraron actividades y respondemos adecuadamente
+    
+      return res.status(200).json({ data: 'ok' });
+     
+  } catch (error) {
+    // Manejo de errores de la consulta a la base de datos
+    console.error("Error al obtener actividades:", error);
+    return res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+
 
 module.exports = router;
