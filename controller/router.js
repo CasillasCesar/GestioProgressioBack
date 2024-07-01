@@ -770,8 +770,8 @@ router.get('/persona/:id', async (req, res) => {
 router.post('/proyectos', async (req, res) => {
   try {
     console.table(req.body)
-    const { fechaInicio, fechaFin, descripcion, nombre } = req.body;
-    const consulta = await pool.query('INSERT INTO Proyectos (fechaInicio, fechaFin, descripcion, nombre) VALUES ($1, $2, $3, $4) RETURNING *', [fechaInicio, fechaFin, descripcion, nombre]);
+    const { fechaInicio, fechaFin, descripcion, nombre,responsable } = req.body;
+    const consulta = await pool.query('INSERT INTO Proyectos (fechaInicio, fechaFin, descripcion, nombre, encargadoid) VALUES ($1, $2, $3, $4, $5) RETURNING *', [fechaInicio, fechaFin, descripcion, nombre,responsable]);
     return res.status(201).json({ 'data': consulta.rows });
   } catch (error) {
     return res.status(500).json({ 'error': error.message });
