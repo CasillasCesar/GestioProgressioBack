@@ -15,6 +15,10 @@ const server = http.createServer(app)
 
 app.use(router)
 
+// Forzar la zona horaria UTC para todas las operaciones de tiempo
+//process.env.TZ = 'UTC';
+
+
 const now = new Date();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   console.log(`Current server time: ${now.toLocaleString()} Time Zone: ${timeZone}`);

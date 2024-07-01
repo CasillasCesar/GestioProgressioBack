@@ -3,16 +3,16 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 
 const pool = new Pool({
-  // user: 'postgres.fqxbxkwjdecasjtcqtly',
-  // host: 'aws-0-us-east-1.pooler.supabase.com',
-  // database: 'Proyect_manager',
-  // password: '>B*qW>qjtncm2~c',
-  // port: 6543,
-  user: 'postgres',
-  host: 'localhost',
+  user: 'postgres.fqxbxkwjdecasjtcqtly',
+  host: 'aws-0-us-east-1.pooler.supabase.com',
   database: 'Proyect_manager',
-  password: 'nks123',
-  port: 5432,
+  password: '>B*qW>qjtncm2~c',
+  port: 6543,
+  // user: 'postgres',
+  // host: 'localhost',
+  // database: 'Proyect_manager',
+  // password: 'nks123',
+  // port: 5432,
 });
 
 class UserModel {

@@ -13,11 +13,16 @@ const bcrypt = require('bcrypt')            // Encriptar contraseñas
 
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
+  user: 'postgres.fqxbxkwjdecasjtcqtly',
+  host: 'aws-0-us-east-1.pooler.supabase.com',
   database: 'Proyect_manager',
-  password: 'nks123',
-  port: 5432,
+  password: '>B*qW>qjtncm2~c',
+  port: 6543,
+  // user: 'postgres',
+  // host: 'localhost',
+  // database: 'Proyect_manager',
+  // password: 'nks123',
+  // port: 5432,
 });
 
 const userModel = new UserModel();
@@ -217,6 +222,11 @@ router.get('/verify-account', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { nombre, contrasena } = req.body;
 
+  // verificar zona horaria
+  const expiry = new Date(Date.now() + 4 * 60000) // 6 horas y 5 minutos
+  console.log('time: ', expiry);
+
+
   try {
     const result = await pool.query("SELECT * FROM persona WHERE nombre = $1;", [nombre]);
 
@@ -235,8 +245,9 @@ router.post('/login', async (req, res) => {
         const verificationCode = crypto.randomBytes(3).toString('hex'); // Código de 6 caracteres
 
         // Guardar el código de verificación temporalmente en la base de datos
-        await pool.query('UPDATE persona SET verification_code = $1, verification_code_expires = $2 WHERE nombre = $3', 
-                         [verificationCode, new Date(Date.now() + 3 * 60000), nombre]); // El código expira en 3 minutos
+        // await pool.query('UPDATE persona SET verification_code = $1, verification_code_expires = $2 WHERE nombre = $3;', [verificationCode, new Date(Date.now() + 4 * 60000), nombre]); // El código expira en 4 minutos // omitido por hora local
+        await pool.query('UPDATE persona SET verification_code = $1 WHERE nombre = $2;', [verificationCode, nombre]); 
+
 
         // Enviar el código de verificación por correo electrónico
         const transporter = nodemailer.createTransport({
@@ -340,7 +351,9 @@ router.post('/verify-code', async (req, res) => {
     console.log('Verificación iniciada para:', nombre);
 
     // Consulta para verificar el código de verificación
-    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre, verificationCode]);
+    //const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2 AND verification_code_expires > NOW();", [nombre, verificationCode]); // omitido por hora local
+    const result = await pool.query("SELECT * FROM persona WHERE nombre = $1 AND verification_code = $2;", [nombre, verificationCode]);
+
 
     if (result.rows.length > 0) {
       const loginData = result.rows[0];
@@ -352,9 +365,10 @@ router.post('/verify-code', async (req, res) => {
         token = jwt.sign(
           { id: loginData.personaid, nombre: loginData.nombre },
           JWT_SECRET,
-          { expiresIn: '90s' } // Duración del token antes de volver a requerir una nueva verificación
+          { expiresIn: '150s' } // Duración del token antes de volver a requerir una nueva verificación
         );
         console.log('Token generado para:', nombre);
+        
       } catch (tokenError) {
         console.error('Error al generar el token:', tokenError);
         return res.status(500).send({ message: 'Error al generar el token' });
@@ -362,7 +376,9 @@ router.post('/verify-code', async (req, res) => {
 
       // Limpiar el código de verificación solo después de generar el token exitosamente
       try {
-        await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre]);
+       // await pool.query('UPDATE persona SET verification_code = NULL, verification_code_expires = NULL WHERE nombre = $1', [nombre]); // omitido por hora local
+        await pool.query('UPDATE persona SET verification_code = NULL WHERE nombre = $1', [nombre]);
+
         console.log('Código de verificación limpiado para:', nombre);
       } catch (updateError) {
         console.error('Error al limpiar el código de verificación:', updateError);
@@ -398,7 +414,7 @@ router.post('/refresh-token', async (req, res) => {
     const newToken = jwt.sign(
       { id: decoded.personaid, nombre: decoded.nombre },
       JWT_SECRET,
-      { expiresIn: '90s' } // Renueva el token por otros 200 segundos
+      { expiresIn: '100s' } // Renueva el token por otros 200 segundos
     );
 
     return res.json({ message: 'Token refrescado exitosamente.', token: newToken });
@@ -436,9 +452,10 @@ router.post('/forgot-password', async (req, res) => {
 
   // Establecer el token en la base de datos junto con una fecha de expiración
   const expiry = new Date();
-  expiry.setHours(expiry.getHours() + 1); // El token expira en x minutos
+  expiry.setHours(expiry.getHours() + 2); // El token expira en x minutos
 
-  await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, email]);
+  // await pool.query('UPDATE persona SET reset_passwd_token = $1, reset_passwd_expires = $2 WHERE email = $3', [token, expiry, email]); //omitido por hora local
+  await pool.query('UPDATE persona SET reset_passwd_token = $1 WHERE email = $2', [token, email]);
 
   // Opciones de correo electrónico
   let mailOptions = {
@@ -520,57 +537,48 @@ router.post('/forgot-password', async (req, res) => {
   });
 });
 
-// Endpoint para verificar el token de restablecimiento de contraseña
+// Endpoint para verificar el token de restablecimiento de contraseña y redirigir al frontend
 router.get('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   try {
-    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
+    // const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1 AND reset_passwd_expires > NOW()', [token]); //omitido por hora local
+    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1;', [token]);
     if (result.rows.length === 0) {
+      console.log('token invalido');
       return res.status(400).send('<h1>Token inválido o expirado</h1>');
+      
     }
-    const user = result.rows[0];
-    const now = new Date();
-    if (now > user.reset_passwd_expires) {
-      await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send('<h1>Token inválido o expirado</h1>');
-    }
-    // Redirigir al frontend
-    return res.sendFile(path.join(__dirname, './ResetPassword.html')); // Asegúrate de que la ruta es correcta y el archivo existe.
+    // Redirigir al frontend para cambiar la contraseña
+    console.log('redireccion exitosa');
+    return res.redirect(`http://localhost:4200/reset-password/${token}`);
   } catch (err) {
+    console.log('error de token');
     console.error('Error al verificar token:', err);
     res.status(500).send('<h1>Error al verificar token</h1>');
   }
 });
 
-//Endpoint para registrar el cambio de contraseña
-router.post('/reset-password', async (req, res) => {
-  const { token, newPassword, confirmPassword } = req.body;
+// Endpoint para verificar el token de restablecimiento de contraseña
+router.post('/reset-password/:token', async (req, res) => {
+  const { token } = req.params;
+  const { newPassword } = req.body;  // Asegúrate de validar y hashear esta contraseña antes de almacenarla
+  console.log('token', token);
 
-  if (newPassword !== confirmPassword) {
-    return res.status(400).send('Las contraseñas no coinciden.');
+  // const user = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1 AND reset_passwd_expires > NOW()', [token]); // omitido por hora local
+  const user = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1;', [token]);
+  if (user.rows.length === 0) {
+    console.log('token no validop');
+      return res.status(400).send({ message: 'Token inválido o expirado.' });
   }
 
-  try {
-    const result = await pool.query('SELECT * FROM persona WHERE reset_passwd_token = $1', [token]);
-    if (result.rows.length === 0) {
-      return res.status(400).send('Token inválido o expirado.');
-    }
-    const user = result.rows[0];
-    const now = new Date();
-    if (now > user.reset_passwd_expires) {
-      await pool.query('UPDATE persona SET reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $1', [token]);
-      return res.status(400).send('Token inválido o expirado.');
-    }
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Encriptar la nueva contraseña
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE persona SET password = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE reset_passwd_token = $2', [hashedPassword, token]);
+  //await pool.query('UPDATE persona SET contrasena = $1, reset_passwd_token = NULL, reset_passwd_expires = NULL WHERE email = $2', [hashedPassword, user.rows[0].email]); // omitido por hora local
+  await pool.query('UPDATE persona SET contrasena = $1, reset_passwd_token = NULL WHERE email = $2', [hashedPassword, user.rows[0].email]);
 
-    return res.status(200).send('Contraseña restablecida con éxito.');
-  } catch (err) {
-    console.error('Error al restablecer la contraseña:', err);
-    res.status(500).send('Error al restablecer la contraseña.');
-  }
+  console.log('cambio hecho');
+  res.send({ message: 'Contraseña actualizada correctamente.' });
 });
 
 let sendCorreo = (email, nombre, nombreActividad, fechaInicio, fechaFin, descripcion) => {
