@@ -769,6 +769,7 @@ router.get('/persona/:id', async (req, res) => {
 // Agregar un nuevo proyecto
 router.post('/proyectos', async (req, res) => {
   try {
+    console.table(req.body)
     const { fechaInicio, fechaFin, descripcion, nombre } = req.body;
     const consulta = await pool.query('INSERT INTO Proyectos (fechaInicio, fechaFin, descripcion, nombre) VALUES ($1, $2, $3, $4) RETURNING *', [fechaInicio, fechaFin, descripcion, nombre]);
     return res.status(201).json({ 'data': consulta.rows });
