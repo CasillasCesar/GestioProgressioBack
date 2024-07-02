@@ -694,6 +694,8 @@ router.get('/proyectos', async (req, res) => {
 
 // Agregar un nuevo empleado
 router.get('/personas/:id', async (req, res) => {
+  const id = req.params.id
+  console.log(id);
   try {
     const consulta = await pool.query('SELECT * FROM Persona WHERE jefeid = $1', [Number(id)]);
     return res.status(201).json({ 'data': consulta.rows });
